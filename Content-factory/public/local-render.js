@@ -179,7 +179,7 @@ function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>
 async function searchCommons(query){
  const params=new URLSearchParams({
   action:"query",format:"json",origin:"*",generator:"search",gsrsearch:query,
-  gsrnamespace:"6",gsrlimit:"8",prop:"imageinfo",
+  gsrnamespace:"6",gsrlimit:"15",prop:"imageinfo",
   iiprop:"url|extmetadata|thumbmime",iiurlwidth:"1200"
  });
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),14000);
@@ -211,26 +211,31 @@ function loadImage(item){
   img.src=item.url;
  });
 }
+function searchQueryVariants(sceneText,title){
+ const main=extractSearchTerms(sceneText,title);
+ const secondary=extractSearchTerms(title,sceneText);
+ const sceneOnly=extractSearchTerms(sceneText,"");
+ return [...new Set([main,secondary,sceneOnly].filter(Boolean))];
+}
 async function searchSceneAssets(timeline,title,ownImages){
  const assets=new Array(timeline.length).fill(null),credits=[],usedUrls=new Set();
- const jobs=timeline.map((scene,i)=>({scene,i,query:extractSearchTerms(scene.caption,title)}));
+ const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title)}));
  let cursor=0;
  const workers=Array.from({length:3},async()=>{
   while(cursor<jobs.length){
    const job=jobs[cursor++];
-   try{
-    const results=await searchCommons(job.query);
-    let loaded=null;
-    for(const item of results.slice(0,8)){
-     if(usedUrls.has(item.url))continue;
-     try{loaded=await loadImage(item);usedUrls.add(item.url);break;}catch{}
-    }
-    if(loaded){assets[job.i]=loaded;credits.push(loaded);}
-    else if(ownImages.length){const fallback=ownImages[job.i%ownImages.length];assets[job.i]=fallback;}
-   }catch(e){
-    console.warn("Commons search failed for",job.query,e);
-    if(ownImages.length)assets[job.i]=ownImages[job.i%ownImages.length];
+   for(const query of job.queries){
+    try{
+     const results=await searchCommons(query);
+     let loaded=null;
+     for(const item of results.slice(0,10)){
+      if(usedUrls.has(item.url))continue;
+      try{loaded=await loadImage(item);usedUrls.add(item.url);break;}catch{}
+     }
+     if(loaded){assets[job.i]=loaded;credits.push(loaded);break;}
+    }catch(e){console.warn("Commons search failed",query,e);}
    }
+   if(!assets[job.i]&&ownImages.length)assets[job.i]=ownImages[job.i%ownImages.length];
   }
  });
  await Promise.all(workers);
