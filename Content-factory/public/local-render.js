@@ -196,19 +196,32 @@ async function renderLocally() {
   catch(e){canvas.remove();throw Error("MP4 kaydedici açılamadı: "+e.message);}
   let wakeLock=null;
   try { if(navigator.wakeLock) wakeLock=await navigator.wakeLock.request("screen"); } catch {}
-  let raf=0,started=0,stopped=false;
+  let raf=0,started=0,stopped=false,finishTimer=0;
   const stopTracks=()=>stream.getTracks().forEach(t=>t.stop());
-  const stopRecorder=()=>{if(stopped)return;stopped=true;cancelAnimationFrame(raf);if(recorder.state!=="inactive")recorder.stop();stopTracks();};
+  const stopRecorder=()=>{
+    if(stopped)return;
+    stopped=true;
+    cancelAnimationFrame(raf);
+    clearTimeout(finishTimer);
+    if(recorder.state!=="inactive")recorder.stop();
+  };
   const result=new Promise((resolve,reject)=>{
     recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
-    recorder.onerror=()=>reject(Error("Safari video kodlama işlemini durdurdu."));
+    recorder.onerror=()=>{stopTracks();reject(Error("Safari video kodlama işlemini durdurdu."));};
     recorder.onstop=()=>{
+      stopTracks();
       const blob=new Blob(chunks,{type:recorder.mimeType||mime});
-      if(blob.size<80000) reject(Error("MP4 dosyası çok küçük; render tamamlanamadı."));
+      if(blob.size<80000) reject(Error("MP4 dosyası çok küçük; Safari kayıt verisi üretmedi."));
       else resolve(blob);
     };
     source.onended=stopRecorder;
     recorder.start();
+    finishTimer=setTimeout(()=>{
+      if(!stopped){
+        if(source.playbackState===source.FINISHED)stopRecorder();
+        else {stopTracks();reject(Error("iPhone ses/video kaydı zamanında tamamlanmadı. Safari'yi açık tutup 720p ile yeniden dene."));}
+      }
+    },Math.ceil(clean.duration*1000)+12000);
     const frame=now=>{
       if(stopped)return;
       if(!started)started=now;
@@ -216,6 +229,7 @@ async function renderLocally() {
       drawFrame(ctx,w,h,elapsed,clean.duration,timeline,images,title);
       setProgress(24+Math.round(70*elapsed/clean.duration));
       if(elapsed<clean.duration)raf=requestAnimationFrame(frame);
+      else stopRecorder();
     };
     frame(performance.now());
     source.start();
