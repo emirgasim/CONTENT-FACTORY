@@ -179,7 +179,7 @@ function extractSearchTerms(text,title){
 function permittedLicense(label){
  const s=String(label||"").toLowerCase();
  if(/non.?commercial|\bnc\b|cc\s*by[- ]nc|\bnd\b|cc\s*by[- ]nd|no.?derivatives/.test(s))return false;
- return /cc0|cc 0|cc[- ]by(?:[- ]sa)?|public domain/.test(s);
+ return /^(?:cc0|cc\s*0|pdm|public domain|by|by-sa|cc-by|cc-by-sa)$/.test(s)||/cc0|cc\s*0|public domain|creative commons attribution(?:-sharealike)?/.test(s);
 }
 function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();}
 async function searchCommons(query,continuation=null){
@@ -234,7 +234,7 @@ async function searchOpenverse(query){
  if(!response.ok)throw Error("Openverse HTTP "+response.status);
  const data=await response.json();
  return (data.results||[]).map(x=>({
-  title:x.title||"Openverse image",url:x.url||x.thumbnail,pageUrl:x.foreign_landing_url||x.detail_url,
+  title:x.title||"Openverse image",url:x.thumbnail||x.url,pageUrl:x.foreign_landing_url||x.detail_url,
   author:x.creator||"Not specified",license:String(x.license||"").toUpperCase(),
   licenseUrl:x.license_url||"",width:x.width||0,height:x.height||0,source:"Openverse / "+(x.source||"open collection")
  })).filter(x=>x.url&&x.pageUrl&&permittedLicense(x.license));
@@ -245,7 +245,7 @@ async function searchLibraryOfCongress(query){
  if(!response.ok)throw Error("Library of Congress HTTP "+response.status);
  const data=await response.json();
  return (data.results||[]).map(x=>{
-  const rights=String(x.rights||x.description||"");
+  const rights=Array.isArray(x.rights)?x.rights.join(" "):String(x.rights||"");
   const open=/public domain|no known restrictions|no known copyright restrictions|unrestricted/i.test(rights);
   const url=Array.isArray(x.image_url)?(x.image_url.find(u=>/\.jpe?g|\.png|\.webp/i.test(u))||x.image_url[0]):x.image_url;
   return {title:x.title||"Library of Congress image",url,pageUrl:x.id||x.url,author:x.contributor||"Library of Congress",license:open?"Public domain / no known restrictions":"",licenseUrl:"https://www.loc.gov/legal/",width:0,height:0,source:"Library of Congress"};
