@@ -302,60 +302,49 @@ function drawImageInSquare(ctx,image,x,y,size,time,style){
  const sx=Math.max(0,Math.min(iw-sw,(iw-sw)*panX)),sy=Math.max(0,Math.min(ih-sh,(ih-sh)*panY));
  ctx.drawImage(image,sx,sy,sw,sh,x,y,size,size);
 }
-function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles){
- const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1],style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.min(1,time/duration),image=assets[scene.index]?.img;
+function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook){
+ const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
+ const style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.max(0,Math.min(1,time/duration));
+ const image=assets[scene.index]?.img;
  drawBackdrop(ctx,w,h,time,style);
- const size=Math.min(w*.83,h*.49),x=(w-size)/2+Math.sin(time*.65+style.shapeSeed)*w*.008,y=h*.175+Math.cos(time*.8+style.shapeSeed)*h*.008;
- // The square visual is always centered at a consistent chest-level composition point.
- ctx.save();ctx.shadowColor="rgba(0,0,0,.32)";ctx.shadowBlur=w*.035;ctx.shadowOffsetY=h*.012;ctx.fillStyle="#11111A";
+ // Fixed center / chest-level square visual stage.
+ const size=Math.min(w*.83,h*.49),x=(w-size)/2,y=h*.175;
+ ctx.save();ctx.shadowColor="rgba(0,0,0,.3)";ctx.shadowBlur=w*.035;ctx.shadowOffsetY=h*.012;ctx.fillStyle="#101018";
  ctx.beginPath();ctx.roundRect(x-w*.014,y-w*.014,size+w*.028,size+w*.028,w*.035);ctx.fill();ctx.restore();
  ctx.save();ctx.beginPath();ctx.roundRect(x,y,size,size,w*.018);ctx.clip();
  if(image)drawImageInSquare(ctx,image,x,y,size,local,style);
- else{ctx.fillStyle=style.paper;ctx.fillRect(x,y,size,size);drawPixelArt(ctx,x+size*.08,y+size*.10,size*.84,scene.caption,style,local);}
- // Tiny branded frame details, no duplicated subtitle ribbon.
- ctx.fillStyle=style.accent;ctx.fillRect(x,y,size*.12,Math.max(7,w*.012));
- ctx.fillStyle=style.accent2;ctx.fillRect(x+size*.88,y+size*.965,size*.12,Math.max(7,w*.012));
+ else{ctx.fillStyle="#A7E3FF";ctx.fillRect(x,y,size,size);drawPixelArt(ctx,x+size*.08,y+size*.10,size*.84,scene.caption,style,local);}
+ // Solid color tabs frame the illustration, avoiding overlays across the image.
+ ctx.fillStyle=style.accent;ctx.fillRect(x,y,size*.2,Math.max(8,w*.014));
+ ctx.fillStyle=style.accent2;ctx.fillRect(x+size*.8,y+size*.97,size*.2,Math.max(8,w*.014));
  ctx.restore();
- // Dynamic graphic stickers / bursts.
- ctx.save();const sx=w*(.08+.84*Math.abs(Math.sin(style.shapeSeed))),sy=h*(.105+.06*Math.cos(time+style.shapeSeed));
- ctx.translate(sx,sy);ctx.rotate(Math.sin(time*2+style.shapeSeed)*.12);ctx.fillStyle=style.accent2;
- if(style.layout%2){ctx.beginPath();for(let i=0;i<10;i++){const r=i%2?w*.055:w*.023,a=i*Math.PI/5-Math.PI/2;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}ctx.closePath();ctx.fill();}
- else{ctx.beginPath();ctx.arc(0,0,w*.045,0,Math.PI*2);ctx.fill();}
- ctx.restore();
- // Contrast-locked caption plaque: every line gets the same audited high-contrast plate.
+
+ // Hook: manually entered one-line/ two-line attention banner at the top.
+ if(hook){
+  const hookFont=Math.round(w*.044);ctx.font="900 "+hookFont+"px system-ui, -apple-system, sans-serif";
+  const hookLines=wrapLines(ctx,hook,w*.82,2),hookHeight=hookLines.length*hookFont*1.16+hookFont*.72;
+  const hookWidth=w*.9,hookX=(w-hookWidth)/2,hookY=h*.035;
+  rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.018,style.hookPlate);
+  ctx.fillStyle=style.hookText;ctx.textAlign="center";ctx.textBaseline="middle";
+  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+hookFont*.36+hookFont*1.16*(i+.5)));
+ }
+
+ // Caption: no outline/stroke. Black sits on a light plate, white on a saturated plate.
  const caption=scene.caption.trim();
- let font=Math.round(w*(caption.split(/\s+/).length<5?.082:caption.split(/\s+/).length<9?.071:.063));
+ let font=Math.round(w*(caption.split(/\s+/).length<5?.078:caption.split(/\s+/).length<9?.069:.061));
  let lines=[];
  ctx.textAlign="center";ctx.textBaseline="middle";
- do{
-  ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";
-  lines=wrapLines(ctx,caption,w*.82,4);
-  if(lines.length>3)font-=2;
- }while(lines.length>3&&font>w*.047);
- const lineHeight=font*1.15;
- const textWidths=lines.map(line=>ctx.measureText(line).width);
- const plaqueWidth=Math.min(w*.91,Math.max(...textWidths)+w*.09);
- const plaqueHeight=lines.length*lineHeight+font*.75;
- const plaqueX=(w-plaqueWidth)/2;
- const plaqueY=h*.735-plaqueHeight/2;
- // Solid plate prevents any background/image from reducing glyph contrast.
- ctx.save();
- ctx.shadowColor="rgba(0,0,0,.25)";ctx.shadowBlur=w*.018;ctx.shadowOffsetY=h*.006;
- rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,w*.018,style.textPlate);
- ctx.restore();
- ctx.fillStyle=style.textColor;
- ctx.strokeStyle=style.textPlate;
- ctx.lineJoin="round";
- ctx.lineWidth=Math.max(1,w*.0015);
- lines.forEach((line,i)=>{
-  const yy=plaqueY+font*.38+lineHeight*(i+.5);
-  const jitter=Math.sin(time*3+i)*w*.002;
-  ctx.strokeText(line,w/2+jitter,yy);
-  ctx.fillText(line,w/2+jitter,yy);
- });
- // Animated progress strip.
- ctx.fillStyle="rgba(0,0,0,.22)";ctx.fillRect(0,h*.982,w,h*.018);
- ctx.fillStyle=style.accent2;ctx.fillRect(0,h*.982,w*progress,h*.018);
+ do{ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";lines=wrapLines(ctx,caption,w*.83,3);if(lines.length>3)font-=2;}while(lines.length>3&&font>w*.045);
+ const lineHeight=font*1.14,plaqueHeight=lines.length*lineHeight+font*.62,plaqueWidth=w*.91;
+ const plaqueX=(w-plaqueWidth)/2,plaqueY=h*.735-plaqueHeight/2;
+ rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,0,style.captionPlate);
+ ctx.fillStyle=style.captionText;
+ lines.forEach((line,i)=>ctx.fillText(line,w/2,plaqueY+font*.31+lineHeight*(i+.5)));
+
+ // Video-duration bar uses the exact audio clock fraction on every frame.
+ const barH=Math.max(8,h*.009),barY=h*.982;
+ ctx.fillStyle=style.progressTrack;ctx.fillRect(0,barY,w,barH);
+ ctx.fillStyle=style.progressFill;ctx.fillRect(0,barY,w*progress,barH);
 }
 function wrapLines(ctx,text,maxWidth,maxLines){
  const words=text.split(/\s+/),lines=[];let line="";
@@ -372,7 +361,7 @@ async function verifyVideoDuration(blob,expected){
  });}catch(e){throw e;}
 }
 async function renderLocally(){
- const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",file=state.reference;
+ const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),file=state.reference;
  if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");
  const Audio=window.AudioContext||window.webkitAudioContext;
  if(!Audio||!HTMLCanvasElement.prototype.captureStream||!window.MediaRecorder)throw Error("Safari bu iPhone'da yerel video üretimini desteklemiyor.");
@@ -410,18 +399,18 @@ async function renderLocally(){
   const chunks=[];
   recorder.onerror=()=>fail(Error("Safari MP4 kodlama işlemini durdurdu."));
   recorder.onstop=()=>{stopTracks();if(settled)return;const blob=new Blob(chunks,{type:recorder.mimeType||mime});if(blob.size<80000)fail(Error("MP4 kaydı boş veya eksik. Kaliteyi 720p yapıp yeniden dene."));else{settled=true;resolve(blob);}};
-  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles);setProgress(96);finish();};
+  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);setProgress(96);finish();};
   try{recorder.start();}catch(e){fail(Error("Safari kayıt başlatamadı: "+e.message));return;}
   startedAt=audioContext.currentTime;
   finishTimer=setTimeout(()=>{if(!stopped)fail(Error("Sesin tamamı çalınmadan render zaman aşımına uğradı. Safari'yi önde tut ve 720p ile tekrar dene."));},Math.ceil(clean.duration*1000)+18000);
   const frame=()=>{
    if(stopped)return;
    const elapsed=Math.min(clean.duration,Math.max(0,audioContext.currentTime-startedAt));
-   drawFrame(ctx,w,h,elapsed,clean.duration,timeline,assets,title,styles);
+   drawFrame(ctx,w,h,elapsed,clean.duration,timeline,assets,title,styles,hook);
    setProgress(30+Math.round(62*elapsed/clean.duration));
    if(elapsed>=clean.duration-.025)finish();else raf=requestAnimationFrame(frame);
   };
-  drawFrame(ctx,w,h,0,clean.duration,timeline,assets,title,styles);
+  drawFrame(ctx,w,h,0,clean.duration,timeline,assets,title,styles,hook);
   raf=requestAnimationFrame(frame);source.start();
  });
  let blob;
@@ -429,13 +418,13 @@ async function renderLocally(){
  finally{await cleanup();}
  revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
  state.videoUrl=URL.createObjectURL(blob);state.audioUrl=URL.createObjectURL(wavBlob(clean));
- const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
+ const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Kanca: "+(hook||"(manuel kanca girilmedi)"),"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
  for(let i=0;i<assets.length;i++){const item=assets[i];if(!item)continue;if(item.own){creditLines.push("Sahne "+(i+1)+": Kullanıcının yüklediği görsel — "+item.title);}else{creditLines.push("Sahne "+(i+1)+": "+item.title,"Yazar: "+item.author,"Lisans: "+item.license,"Lisans bağlantısı: "+item.licenseUrl,"Dosya sayfası: "+item.pageUrl,"");}}
  if(!imageCount)creditLines.push("Commons aramasında uygun görsel bulunamadı; bu sahneler özgün grafik illüstrasyonlarıyla oluşturuldu.");
  creditLines.push("Not: Wikimedia Commons dosyalarının her biri kendi dosya sayfasındaki lisans ve atıf koşullarıyla yeniden kullanılmalıdır.");
  state.creditsUrl=URL.createObjectURL(new Blob([creditLines.join("\n")],{type:"text/plain;charset=utf-8"}));
  $("#finalVideo").src=state.videoUrl;
- $("#renderStats").textContent="MP4 · "+w+"×"+h+" · "+clean.duration.toFixed(1)+" sn (orijinal "+decoded.duration.toFixed(1)+" sn) · "+analysis.removed.toFixed(1)+" sn sessizlik azaltıldı · "+imageCount+"/"+timeline.length+" sahnede internet/kullanıcı görseli · dinamik arka plan";
+ $("#renderStats").textContent="MP4 · "+w+"×"+h+" · "+clean.duration.toFixed(1)+" sn (orijinal "+decoded.duration.toFixed(1)+" sn) · "+analysis.removed.toFixed(1)+" sn sessizlik azaltıldı · "+imageCount+"/"+timeline.length+" sahnede internet/kullanıcı görseli · solid cartoon arka plan · kontrast kontrolü "+contrastAudit.minContrast.toFixed(1)+":1";
  $("#renderResult").classList.remove("hidden");setProgress(100);
  setText("#renderStatus","MP4 tamamlandı ve süre doğrulandı. Önizle, MP4'ü ve kaynak/lisans listesini kaydet.");
 }
