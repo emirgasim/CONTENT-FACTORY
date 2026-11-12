@@ -61,3 +61,18 @@ Repository subfolder: `Content-factory/`
 - Restrict `ALLOWED_ORIGINS` to the production Pages origin.
 - Use only a voice you own or are authorized to clone.
 - Rendered jobs are temporary and held by the engine process; they are not long-term cloud storage.
+
+
+## Separate VoiceStudio workspace
+
+The homepage now has a separate **Voice Studio** section alongside Shorts Factory. It connects to a running VoiceStudio backend and uses its documented OpenAI-compatible API:
+
+- `GET /health` checks the backend.
+- `GET /v1/audio/voices` lists saved voice profiles.
+- `POST /v1/audio/speech` generates a WAV preview with the selected profile.
+
+In the Voice Studio panel, enter the VoiceStudio service-root URL (not a `/v1` URL), optional remote bearer token, choose a discovered voice profile, paste text and generate/download WAV. The settings are stored in this browser's local storage.
+
+**Deployment requirement:** VoiceStudio itself must be running on a reachable machine/server. The Content Factory Pages site does not host its Python model runtime. A remote VoiceStudio backend must allow HTTPS requests from the Pages domain through CORS and must be protected with its own authentication. Keep remote API keys private; do not share the configured browser with other people.
+
+**Scope of this first integration:** it generates speech with an existing saved voice profile. Creating/cloning a new voice profile is still done in VoiceStudio's own profile workflow and is not yet built into this panel. The existing MOSS-based Shorts preview/render flow remains separate and unchanged.
