@@ -1,43 +1,63 @@
 # Content Factory
 
-iPhone-first creator workflow. GPT sohbeti konu araştırması ve seslendirme metnini hazırlar; panel bir Shorts konusunu tek seferde alır ve ses dosyasını yerel tarayıcıda işler.
+iPhone-first Shorts / long-form workflow. GPT sohbeti konu araştırması ve senaryoyu hazırlar; Content Factory tek bir Shorts konusunun sesini ve görsel MP4 çıktısını yönetir.
 
-## Shorts: one topic at a time
+## Current Shorts workflow
 
-1. Konu araştırması ve seslendirme metni ChatGPT sohbetinde hazırlanır.
-2. Panelde **Shorts Factory** açılır.
-3. İsteğe bağlı konu başlığı ve seslendirme metni yapıştırılır.
-4. ElevenLabs MP3/WAV/M4A dosyası seçilir.
-5. **Duraklamaları analiz et ve kırp** ile uzun düşük sesli/sessiz aralıklar tespit edilir.
-6. Temizlenmiş WAV dinlenir ve indirilir.
-7. Kullanıcı ikinci konu için yeni işlem açar; iki video CapCut'ta birleştirilir.
+1. GPT sohbetinde konuyu ve 40–45 saniyelik ElevenLabs/MOSS uyumlu seslendirme metnini hazırla.
+2. Panelde **Shorts Factory** aç; yalnızca tek konunun metnini yapıştır.
+3. Kendi sesinden 10–30 saniyelik temiz referans kaydını bir kez yükle. Dosya cihazın IndexedDB alanında saklanır.
+4. **Seslendirme örneği oluştur** ile MOSS-TTS-Nano ses önizlemesini üret ve dinle.
+5. Beğenince **Sesi onayla ve videoyu hazırla** düğmesine bas.
+6. Engine uzun sessizlikleri kısaltır, Türkçe konuşmayı zaman kodlarına ayırır, Wikimedia Commons'tan uygun lisanslı görseller arar ve 9:16 MP4 render eder.
+7. MP4, temizlenmiş WAV ve kaynak/lisans dökümünü indir.
+8. İkinci konu için yeni Shorts başlat; iki sonucu CapCut'ta kendi kamera kliplerinle birleştir.
 
-## Local silence trimming
+## Architecture
 
-- Audio bytes are read with the browser File API and decoded using Web Audio API.
-- 10 ms RMS windows identify low-level sections using an adjustable dB threshold.
-- Only quiet gaps longer than the selected minimum duration are shortened; configurable audio padding is retained around cuts.
-- Output is an uncompressed PCM WAV created locally in the browser. Original file is not modified or uploaded.
-- The user should preview the result before using it. Quiet breaths may be shortened if they fall below the selected threshold for long enough; this is not semantic breath recognition or studio-grade noise editing.
-- iOS Safari decoding support depends on the source codec and available device memory. If a file cannot decode, convert/export it as WAV or MP3 in an audio app and retry.
-- Processing happens in device memory. Very long/high-resolution audio can require substantial memory.
+- GitHub: source code and documentation.
+- Cloudflare Pages: static iPhone-friendly website.
+- `voice-engine/`: separate Python Docker service that runs MOSS-TTS-Nano ONNX, FFmpeg, Whisper transcription, Wikimedia Commons media search and MP4 rendering.
+- Raw recordings and generated files are not committed to GitHub and are not stored in R2 by this frontend.
 
-## Current limitations
+The Python media engine cannot run inside Cloudflare Pages. Deploy `voice-engine/` as a separate Docker service (for example a Hugging Face Docker Space) or run it on a suitable computer. The website requires its URL and shared token under **Motor ayarı**.
 
-This feature does not yet:
-- generate the narration or call ElevenLabs;
-- identify breaths separately from silence;
-- perform speech recognition or word-level alignment;
-- search/download stock footage;
-- create a synchronized video or render MP4;
-- upload large camera footage to a remote processor.
+## Voice engine deployment
 
-The long-form workspace remains a separate future implementation. No raw media is committed to GitHub or uploaded to R2 by this static frontend.
+See [voice-engine/README.md](voice-engine/README.md). The uploaded MOSS source ZIP contains source code, not model weights. The Docker image downloads the official ONNX TTS and audio-tokenizer weights on first startup from Hugging Face.
 
-## Cloudflare Pages
+## Implemented frontend
 
-Repository folder: `Content-factory/`
+- One-topic-at-a-time workflow.
+- Text paste field and optional topic title.
+- Local reference voice profile stored in IndexedDB.
+- MOSS TTS preview request and playback.
+- User approval gate before trimming/rendering.
+- Render job status polling.
+- MP4, cleaned WAV and attribution download controls.
+- Engine URL and token configuration.
+
+## Engine behavior and limits
+
+- TTS uses MOSS-TTS-Nano ONNX CPU voice cloning.
+- Silence trimming uses FFmpeg's `silenceremove` filter. It trims long low-level gaps; it does not semantically identify breaths. Very quiet breaths may be shortened, so preview the final audio.
+- Speech timestamps are generated with Whisper segment-level timestamps, not exact forced word alignment.
+- The first renderer searches still images on Wikimedia Commons and filters known CC0, Public Domain, CC BY and CC BY-SA licenses. It creates animated zoom/pan, split layouts, collage and bright infographic cards, then writes source/license credits.
+- Video stock footage search, sophisticated word-level alignment, face-camera compositing and cinematic fine-grained editing are future improvements.
+- Output is 1080×1920, 25 fps, H.264/AAC. Actual MP4 duration follows the cleaned audio; spoken content is not cut merely to force 40–45 seconds.
+- The media engine is CPU intensive. Free model weights do not mean unlimited or zero-cost compute.
+
+## Cloudflare Pages settings
+
+Repository subfolder: `Content-factory/`
 - Root directory: `Content-factory`
 - Framework preset: `None`
 - Build command: empty
 - Build output directory: `public`
+
+## Privacy and security
+
+- Set a long random `FACTORY_API_TOKEN` on the engine and paste the same token into the website's Motor ayarı.
+- Restrict `ALLOWED_ORIGINS` to the production Pages origin.
+- Use only a voice you own or are authorized to clone.
+- Rendered jobs are temporary and held by the engine process; they are not long-term cloud storage.
