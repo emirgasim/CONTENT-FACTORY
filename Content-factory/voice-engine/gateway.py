@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 import requests
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image, ImageDraw, ImageFont
@@ -96,7 +96,7 @@ async def health() -> dict[str, Any]:
 async def voice_preview(
     text: str = Form(...),
     prompt_audio: UploadFile = File(...),
-    _auth: None = __import__("fastapi").Depends(require_access),
+    _auth: None = Depends(require_access),
 ) -> Response:
     normalized = (text or "").strip()
     if not normalized:
@@ -154,6 +154,7 @@ async def start_short_render(
         raise HTTPException(status_code=400, detail="Metin ve onaylanmış ses dosyası gereklidir.")
     if len(script) > 5000 or len(audio_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="Metin veya ses dosyası izin verilen boyutu aşıyor.")
+    cleanup_old_jobs()
     job_id = uuid.uuid4().hex
     work_dir = Path(tempfile.mkdtemp(prefix="cf-" + job_id[:8] + "-"))
     source_audio = work_dir / "approved-preview.wav"
@@ -233,7 +234,7 @@ def transcribe_audio(audio_path: Path) -> list[dict[str, Any]]:
 
 
 def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
-    parts = [p.strip() for p in re.split(r"(?<=[.!?])\\s+", text) if p.strip()]
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
     if not parts:
         parts = [text]
     weights = [max(1, len(p.split())) for p in parts]
@@ -289,7 +290,7 @@ def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_second
 
 
 def plain_text(value: Any) -> str:
-    return re.sub(r"\\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
 
 
 def license_allowed(label: str) -> bool:
@@ -437,7 +438,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
             second_asset = None
     canvas = Image.new("RGB", (width, height), color)
     draw = ImageDraw.Draw(canvas)
-    is_numeric = bool(re.search(r"\\d", text))
+    is_numeric = bool(re.search(r"\d", text))
     is_compare = any(k in text.lower() for k in (" karşı ", " versus ", " ile ", " fark ", " önce ", " sonra ", " vs "))
     layout = "infographic" if is_numeric else ("split" if is_compare or index % 4 == 1 else ("collage" if second_asset is not None and index % 3 == 0 else "full"))
     title_font = load_font(78)
@@ -460,7 +461,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         draw.rectangle((650, 0, width, height), fill=color)
         draw.rectangle((0, 0, 650, 180), fill="#12141D")
         draw.text((44, 60), "GERÇEK / DETAY", font=small_font, fill="white")
-        draw_wrapped(draw, text, load_font( sixty := 58), 690, 580, 340, "#121212", 7)
+        draw_wrapped(draw, text, load_font(58), 690, 580, 340, "#121212", 7)
         draw.rounded_rectangle((690, 1510, 1030, 1800), radius=45, fill="#12141D")
         draw.text((730, 1580), "DEVAMINI", font=load_font(38), fill="white")
         draw.text((730, 1640), "KEŞFET", font=load_font(54), fill=color)
@@ -558,7 +559,7 @@ def render_short_job(job_id: str) -> None:
             clips.append(clip_path)
             update_job(job_id, progress=70 + int(20 * (idx + 1) / max(1, len(groups))), message="Sahneler birleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
         list_file = work_dir / "clips.txt"
-        list_file.write_text("".join("file '" + str(p).replace("'", "'\\\\''") + "'\\n" for p in clips), encoding="utf-8")
+        list_file.write_text("".join("file '" + str(p) + "'\n" for p in clips), encoding="utf-8")
         output_video = work_dir / "shorts.mp4"
         update_job(job_id, progress=92, message="Ses ve görüntü senkronize edilerek MP4 oluşturuluyor…")
         final_result = run_command([
@@ -599,7 +600,7 @@ def render_short_job(job_id: str) -> None:
             "",
             "Not: Görseller Wikimedia Commons üzerinden aranır. Her varlığın kendi lisans koşulları yukarıda listelenir.",
         ])
-        (work_dir / "sources-and-licenses.txt").write_text("\\n".join(credits), encoding="utf-8")
+        (work_dir / "sources-and-licenses.txt").write_text("\n".join(credits), encoding="utf-8")
         update_job(
             job_id, status="completed", progress=100, message="Shorts MP4 hazır.",
             duration=round(probe_duration(output_video), 2), removed_silence=round(removed, 2),
