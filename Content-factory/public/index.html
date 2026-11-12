@@ -17,19 +17,23 @@
 </section>
 
 <section id="agentHub" class="panel agent-hub">
-<div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div><span id="agentStatus" class="muted">Ücretsiz ajan merkezi</span></div>
-<p class="muted">11 YouTube uzmanlığı ve 6 analiz aracı. Ajan analizleri Cloudflare üzerinde ücretsiz çalışır; ChatGPT sohbeti araştırma ve senaryo yönetimini üstlenir. Hugging Face, Claude veya harici API anahtarı gerekmez.</p>
+<div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div></div>
+<p class="muted">Bir uzmanlık seç. Önce ona özel çalışma ekranı açılır; gerekli bilgileri girince analiz çalışır veya ChatGPT için tam görev paketi hazırlanır. Claude ya da ücretli API gerekmez.</p>
+<div id="agentStatus" class="agent-status">11 uzmanlık yükleniyor…</div>
 <div class="agent-skills" id="agentSkills"><span class="muted">Ajan listesi yükleniyor…</span></div>
-<div class="agent-tools">
-<h3>Çalıştırılabilir analiz araçları</h3>
-<label class="field-label" for="agentTool">Araç</label>
-<select id="agentTool">
-<option value="hookscore">Kanca puanla</option><option value="title">Başlık / kapak kontrolü</option><option value="deadair">SRT sessizlik / tekrar analizi</option><option value="chapters">SRT bölüm önerisi</option><option value="retention">İzleyici tutma CSV analizi</option><option value="viral">Viral video JSON kıyaslama</option>
-</select>
-<div id="agentFields"></div>
-<button id="runAgent" class="btn btn-primary btn-wide">Analiz aracını çalıştır</button>
-<pre id="agentOutput" class="agent-output hidden"></pre>
-</div></section>\n<section class="mode-grid"><button class="mode-card yellow" id="startShorts"><span class="mode-icon">↗</span><b>SHORTS FACTORY</b><small>Metin · Kendi sesin · Örnek · Otomatik kurgu</small><span class="mode-cta">YENİ SHORTS HAZIRLA ↗</span></button></section>
+<section id="skillWorkspace" class="skill-workspace hidden">
+<div class="skill-workspace-head"><div><div class="eyebrow" id="skillMode">SPECIALIST WORKSPACE</div><h3 id="skillTitle">Uzmanlık</h3><p id="skillDescription" class="muted"></p></div><button id="closeSkill" class="btn btn-ghost">Kapat</button></div>
+<div class="skill-inputs" id="skillInputs"></div>
+<div class="skill-help" id="skillHelp"></div>
+<button id="skillAction" class="btn btn-primary btn-wide">Görevi başlat</button>
+<div id="skillResult" class="skill-result hidden"></div>
+<div id="skillPromptWrap" class="skill-prompt hidden">
+<label class="field-label" for="skillPrompt">CHATGPT GÖREV PAKETİ</label>
+<textarea id="skillPrompt" rows="12" readonly></textarea>
+<button id="copySkillPrompt" class="btn btn-ghost btn-wide">Görevi kopyala</button>
+<p class="muted">Kopyaladığın görevi bu ChatGPT sohbetine yapıştır. Web araştırması ve yaratıcı kararlar burada yürütülür; panel tek başına ChatGPT modelini çağırmaz.</p>
+</div>
+</section></section>\n<section class="mode-grid"><button class="mode-card yellow" id="startShorts"><span class="mode-icon">↗</span><b>SHORTS FACTORY</b><small>Metin · Kendi sesin · Örnek · Otomatik kurgu</small><span class="mode-cta">YENİ SHORTS HAZIRLA ↗</span></button></section>
 
 <section id="editor" class="editor hidden">
 <div class="section-head"><div><div class="eyebrow">ONE SHORT AT A TIME</div><h2>Shorts üretim masası</h2></div><button id="closeEditor" class="btn btn-ghost">Kapat</button></div>
