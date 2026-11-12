@@ -1,71 +1,31 @@
-const $ = s => document.querySelector(s);
-const state = { projects: [], activeId: null, media: null };
-const layouts = ["Sunucu tam ekran","Sunucu sağda + stok solda","Sunucu solda + stok sağda","Bölünmüş ekran","Küçük pencerede sunucu (PiP)","Tam ekran stok video","Tam ekran infografik","Hareketli kolaj","Kinetik tipografi"];
-const uid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random());
-const active = () => state.projects.find(p=>p.id===state.activeId);
-function persist(){ localStorage.setItem("cf-projects",JSON.stringify(state.projects)); renderProjects(); }
-function load(){ try{state.projects=JSON.parse(localStorage.getItem("cf-projects")||"[]")}catch{state.projects=[]} renderProjects(); }
-function newProject(format){
-  const p={id:uid(),format,name:format==="shorts"?"Yeni Shorts Serisi":"Yeni Uzun Video",topic:"",audience:"Genel izleyici",tone:"Merak uyandırıcı",script:"",topics:[],scenes:[],createdAt:new Date().toISOString(),media:null};
-  if(format==="shorts") p.topics=["Konu 1","Konu 2"];
-  state.projects.unshift(p); state.activeId=p.id; persist(); openEditor();
-}
-function renderProjects(){
-  $("#projectList").innerHTML="";
-  $("#emptyState").classList.toggle("hidden",state.projects.length>0);
-  state.projects.forEach(p=>{
-    const el=document.createElement("button"); el.className="project-card"; el.innerHTML=`<small>${p.format==="shorts"?"SHORTS PROJECT":"LONG VIDEO PROJECT"}</small><b></b><p></p>`;
-    el.querySelector("b").textContent=p.name; el.querySelector("p").textContent=p.topic||"Konu henüz belirlenmedi";
-    el.onclick=()=>{state.activeId=p.id;openEditor()}; $("#projectList").append(el);
-  });
-}
-function openEditor(){
-  const p=active(); if(!p)return;
-  $("#editor").classList.remove("hidden"); $("#editorTitle").textContent=p.format==="shorts"?"Shorts proje editörü":"Uzun video editörü";
-  $("#projectName").value=p.name; $("#projectTopic").value=p.topic; $("#projectAudience").value=p.audience; $("#projectTone").value=p.tone; $("#projectScript").value=p.script;
-  state.media=p.media||null; showMedia(); renderScenes(); $("#editor").scrollIntoView({behavior:"smooth"});
-}
-function saveFields(){const p=active();if(!p)return;p.name=$("#projectName").value;p.topic=$("#projectTopic").value;p.audience=$("#projectAudience").value;p.tone=$("#projectTone").value;p.script=$("#projectScript").value;p.media=state.media;persist()}
-function renderScenes(){
-  const p=active(); if(!p)return; $("#sceneList").innerHTML="";
-  p.scenes.forEach((s,i)=>{
-    const row=document.createElement("div");row.className="scene-row";
-    const start=document.createElement("input");start.type="text";start.placeholder="00:00";start.value=s.start||"";
-    const layout=document.createElement("select");layouts.forEach(v=>{const o=document.createElement("option");o.textContent=v;o.value=v;layout.append(o)});layout.value=s.layout;
-    const note=document.createElement("input");note.placeholder="Anlatım / görsel açıklaması";note.value=s.note||"";
-    const del=document.createElement("button");del.textContent="×";del.title="Sahneyi sil";
-    [start,layout,note].forEach(x=>x.addEventListener("change",()=>{s.start=start.value;s.layout=layout.value;s.note=note.value;persist()}));
-    del.onclick=()=>{p.scenes.splice(i,1);persist();renderScenes()};
-    row.append(start,layout,note,del);$("#sceneList").append(row);
-  });
-  $("#sceneCount").textContent=`${p.scenes.length} sahne`;
-}
-function showMedia(){
-  const el=$("#mediaInfo"); if(!state.media){el.textContent="Henüz medya seçilmedi.";return}
-  el.textContent=`${state.media.name} · ${state.media.type||"bilinmeyen tür"} · ${state.media.sizeMB} MB${state.media.duration?` · ${Math.round(state.media.duration)} sn`:""}`;
-}
-function download(name,data,type="application/json"){
-  const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
-}
+const $=s=>document.querySelector(s);
+const state={projects:[],activeId:null,files:new Map()};
+const uid=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());
+const active=()=>state.projects.find(p=>p.id===state.activeId);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function persist(){try{localStorage.setItem("cf-projects-v2",JSON.stringify(state.projects))}catch(e){console.warn("Local save failed",e)}renderProjects()}
+function load(){try{state.projects=JSON.parse(localStorage.getItem("cf-projects-v2")||"[]")}catch{state.projects=[]}renderProjects()}
+function newProject(format){const p={id:uid(),format,name:format==="shorts"?"Yeni Shorts üretimi":"Yeni uzun video",series:"",part:"",description:"",topics:[],createdAt:new Date().toISOString()};state.projects.unshift(p);state.activeId=p.id;persist();openEditor()}
+function renderProjects(){$("#projectList").innerHTML="";$("#emptyState").classList.toggle("hidden",state.projects.length>0);state.projects.forEach(p=>{const b=document.createElement("button");b.className="project-card";b.innerHTML='<small></small><b></b><p></p>';b.querySelector("small").textContent=p.format==="shorts"?"SHORTS · GPT PACKAGE":"LONG VIDEO · GPT PACKAGE";b.querySelector("b").textContent=p.name||p.series||"Adsız proje";b.querySelector("p").textContent=p.series?(p.series+" · "+(p.part||"Part belirtilmedi")):"GPT paketi bekleniyor";b.onclick=()=>{state.activeId=p.id;openEditor()};$("#projectList").append(b)})}
+function openEditor(){const p=active();if(!p)return;$("#editor").classList.remove("hidden");$("#shortsFlow").classList.toggle("hidden",p.format!=="shorts");$("#longFlow").classList.toggle("hidden",p.format!=="long");$("#editorTitle").textContent=p.format==="shorts"?"Shorts üretim masası":"Uzun video üretim masası";if(p.format==="shorts")renderShorts();else renderLong();$("#editor").scrollIntoView({behavior:"smooth"})}
+function renderShorts(){const p=active();if(!p)return;$("#seriesTitle").textContent=p.series||"Yeni Shorts üretimi";$("#seriesDescription").textContent=[p.part,p.description].filter(Boolean).join(" · ")||"GPT sohbetinde hazırlanan paket buraya aktarılacak.";$("#packageStatus").textContent=p.packageImported?"GPT paketi yüklendi.":"Henüz GPT paketi yüklenmedi.";$("#topicCards").innerHTML="";(p.topics||[]).forEach((t,i)=>{const card=document.createElement("article");card.className="panel topic-card";const topicNo=i===0?"A":"B";card.innerHTML='<div class="eyebrow">KONU '+topicNo+'</div><h3 class="topic-title"></h3><p class="muted topic-script"></p><div class="audio-box"><b>Ses dosyası</b><p class="muted">ElevenLabs MP3/WAV yükle veya ses içeren videoyu seç.</p><label class="file-drop compact"><span>＋</span><b>MP3 / WAV yükle</b><input class="audio-input" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/*" hidden></label><label class="file-drop compact video-audio"><span>⇧</span><b>Videodan ses ayırmayı dene</b><input class="video-input" type="file" accept="video/*" hidden></label><div class="audio-status muted">Ses dosyası bekleniyor.</div></div><div class="topic-actions"><button class="btn btn-ghost script-copy">Senaryoyu kopyala</button><button class="btn btn-dark export-topic">Konu paketini indir</button></div>';card.querySelector(".topic-title").textContent=t.title||"Başlıksız konu";card.querySelector(".topic-script").textContent=t.script||"Bu konu için senaryo GPT paketinde bulunmuyor.";const audio=card.querySelector(".audio-input"),video=card.querySelector(".video-input"),status=card.querySelector(".audio-status");const key=p.id+":"+i;const meta=t.audio||null;if(meta)status.textContent=meta.name+" · "+meta.sizeMB+" MB";audio.onchange=()=>{const f=audio.files[0];if(!f)return;state.files.set(key,f);t.audio={name:f.name,type:f.type,sizeMB:(f.size/1048576).toFixed(1),source:"uploaded-audio"};status.textContent="Hazır: "+f.name+" · "+t.audio.sizeMB+" MB";persist()};video.onchange=async()=>{const f=video.files[0];if(!f)return;status.textContent="Video inceleniyor…";const result=await extractAudioFromVideo(f);if(result){state.files.set(key,result);t.audio={name:result.name,type:result.type,sizeMB:(result.size/1048576).toFixed(1),source:"extracted-from-video"};status.textContent="Ses ayrıldı: "+result.name+" · "+t.audio.sizeMB+" MB";persist()}else{status.textContent="Bu iPhone tarayıcısı videodan otomatik ses ayırmayı desteklemedi. CapCut'ta videoyu açıp sesi dışa aktararak MP3/WAV yükleyebilirsin."}};card.querySelector(".script-copy").onclick=()=>copyText(t.script||"");card.querySelector(".export-topic").onclick=()=>download("shorts-topic-"+(i+1)+".json",JSON.stringify({schema:"content-factory-shorts-topic-v1",series:p.series,part:p.part,topic:t},null,2));$("#topicCards").append(card)});$("#deliveryA").textContent=deliveryText(p.topics?.[0]);$("#deliveryB").textContent=deliveryText(p.topics?.[1])}
+function deliveryText(t){if(!t)return"GPT paketi bekleniyor";return t.audio?"Ses hazır":"Ses dosyası bekleniyor"}
+function renderLong(){const p=active();$("#longPackageStatus").textContent=p.packageImported?"Uzun video GPT paketi yüklendi.":"Henüz paket yüklenmedi.";$("#longVideoInfo").textContent=p.videoMeta?p.videoMeta.name+" · "+p.videoMeta.sizeMB+" MB":"Henüz video seçilmedi."}
+function download(name,data,type="application/json"){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+async function copyText(t){try{await navigator.clipboard.writeText(t);alert("Senaryo kopyalandı.")}catch{alert(t||"Senaryo bulunamadı.")}}
+function importPackageData(data){const p=active();if(!p)throw Error("Önce Shorts veya uzun video projesi aç.");if(data.schema==="content-factory-shorts-v1"||data.format==="content-factory-shorts-v1"){p.format="shorts";p.series=data.series||data.project?.series||"";p.part=data.part||data.project?.part||"";p.description=data.description||"";p.name=data.projectName||[p.series,p.part].filter(Boolean).join(" — ")||"GPT Shorts paketi";p.topics=(data.topics||[]).slice(0,2).map(t=>({title:t.title||"",script:t.script||t.voiceover||"",duration:t.duration||"40–45 saniye",scenes:t.scenes||t.visualPlan||[],audio:null}));if(p.topics.length!==2)throw Error("Shorts paketi tam olarak 2 konu içermeli.");p.packageImported=true}else if(data.schema==="content-factory-long-v1"||data.format==="content-factory-long-v1"){p.format="long";p.name=data.projectName||data.title||"Uzun video GPT paketi";p.series=data.title||"";p.description=data.description||"";p.script=data.script||data.teleprompterScript||"";p.scenes=data.scenes||data.visualPlan||[];p.packageImported=true}else{throw Error("JSON şeması tanınmadı. Önce GPT paket şablonunu indir.")}persist();openEditor()}
+async function readJsonFile(file){return JSON.parse(await file.text())}
+async function extractAudioFromVideo(file){const video=document.createElement("video");video.muted=false;video.playsInline=true;video.preload="auto";const url=URL.createObjectURL(file);video.src=url;try{await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=rej});const capture=video.captureStream||video.mozCaptureStream;if(!capture||!window.MediaRecorder){URL.revokeObjectURL(url);return null}const stream=capture.call(video);const audioTracks=stream.getAudioTracks();if(!audioTracks.length){URL.revokeObjectURL(url);return null}const audioStream=new MediaStream(audioTracks);const mime=["audio/mp4","audio/webm;codecs=opus","audio/webm"].find(x=>MediaRecorder.isTypeSupported?.(x));const recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined),chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const done=new Promise(resolve=>recorder.onstop=()=>resolve(new Blob(chunks,{type:recorder.mimeType||"audio/webm"})));recorder.start(500);await video.play();await new Promise(resolve=>{video.onended=resolve;video.onerror=resolve});recorder.stop();const blob=await done;video.pause();stream.getTracks().forEach(t=>t.stop());URL.revokeObjectURL(url);if(!blob.size)return null;return new File([blob],file.name.replace(/\.[^.]+$/,"")+".audio."+((blob.type.includes("mp4"))?"m4a":"webm"),{type:blob.type})}catch(e){video.pause();URL.revokeObjectURL(url);return null}}
 document.querySelectorAll("[data-format]").forEach(b=>b.onclick=()=>newProject(b.dataset.format));
-$("#saveProject").onclick=()=>{saveFields();alert("Proje bu tarayıcıya kaydedildi.")};
 $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
-$("#addScene").onclick=()=>{const p=active();if(!p)return;p.scenes.push({id:uid(),start:"00:00",layout:"Sunucu tam ekran",note:""});persist();renderScenes()};
-$("#mediaFile").onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  let duration=null;
-  if(f.type.startsWith("video/")||f.type.startsWith("audio/")){
-    const url=URL.createObjectURL(f);
-    duration=await new Promise(resolve=>{const m=document.createElement(f.type.startsWith("video/")?"video":"audio");m.preload="metadata";m.onloadedmetadata=()=>{resolve(m.duration);URL.revokeObjectURL(url)};m.onerror=()=>{resolve(null);URL.revokeObjectURL(url)};m.src=url});
-  }
-  state.media={name:f.name,type:f.type,sizeMB:(f.size/1024/1024).toFixed(1),duration};
-  showMedia();saveFields();
-};
-$("#exportProject").onclick=()=>{saveFields();download("content-factory-project.json",JSON.stringify(state.projects,null,2))};
-$("#exportEdl").onclick=()=>{saveFields();const p=active();if(p)download(`${(p.name||"project").replace(/[^a-z0-9-_]/gi,"_")}-timeline.json`,JSON.stringify({project:p,format:"content-factory-edl-v1"},null,2))};
+$("#importGptPackage").onclick=()=>$("#gptPackageFile").click();
+$("#gptPackageFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{importPackageData(await readJsonFile(f));$("#packageStatus").textContent="GPT paketi başarıyla içe aktarıldı."}catch(err){alert(err.message);$("#packageStatus").textContent="Paket yüklenemedi."}e.target.value=""};
+$("#importLongPackage").onclick=()=>$("#longPackageFile").click();
+$("#longPackageFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{importPackageData(await readJsonFile(f));$("#longPackageStatus").textContent="Uzun video paketi başarıyla yüklendi."}catch(err){alert(err.message)}e.target.value=""};
+$("#downloadTemplate").onclick=()=>download("content-factory-shorts-template.json",JSON.stringify({schema:"content-factory-shorts-v1",projectName:"Seri adı — Part 1",series:"Seri adı",part:"Part 1",description:"Seri ve bölüm kısa açıklaması",topics:[{title:"Konu A başlığı",script:"ElevenLabs için hazır seslendirme metni.",duration:"40–45 saniye",scenes:[{start:"00:00",end:"00:05",layout:"Tam ekran sunucu",visual:"Kanca görüntüsü",source:"Stok veya özgün grafik",license:"Kaynak ve lisans notu"}]},{title:"Konu B başlığı",script:"İkinci konu için seslendirme metni.",duration:"40–45 saniye",scenes:[]}]},null,2));
+$("#exportShortsPackage").onclick=()=>{const p=active();if(!p)return;download("content-factory-shorts-production.json",JSON.stringify({schema:"content-factory-shorts-production-v1",project:{name:p.name,series:p.series,part:p.part},topics:p.topics},null,2))};
+$("#longVideoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const p=active();p.videoMeta={name:f.name,sizeMB:(f.size/1048576).toFixed(1),type:f.type};state.files.set(p.id+":long-video",f);persist();renderLong()};
 $("#importProject").onclick=()=>$("#projectFile").click();
-$("#projectFile").onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{const data=JSON.parse(await f.text());const incoming=Array.isArray(data)?data:[data];incoming.forEach(p=>{if(!p.id)p.id=uid();state.projects.unshift(p)});persist();alert("Proje içe aktarıldı.")}catch{alert("Bu JSON dosyası okunamadı.")}e.target.value="";
-};
+$("#projectFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const data=await readJsonFile(f);if(data.schema?.startsWith("content-factory-")){if(data.schema==="content-factory-shorts-production-v1"){const p={id:uid(),format:"shorts",name:data.project?.name||"İçe aktarılan Shorts",series:data.project?.series||"",part:data.project?.part||"",topics:data.topics||[],packageImported:true};state.projects.unshift(p);state.activeId=p.id;persist();openEditor()}else{const p={id:uid(),format:"shorts"};state.projects.unshift(p);state.activeId=p.id;importPackageData(data)}}else{const incoming=Array.isArray(data)?data:[data];incoming.forEach(p=>{if(!p.id)p.id=uid();state.projects.unshift(p)});persist();alert("Yedek içe aktarıldı.")}}catch(err){alert("JSON içe aktarılamadı: "+err.message)}e.target.value=""};
+$("#exportProject").onclick=()=>download("content-factory-backup.json",JSON.stringify(state.projects,null,2));
 load();
