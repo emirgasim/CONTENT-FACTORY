@@ -213,7 +213,7 @@ function loadImage(item){
 }
 function searchQueryVariants(sceneText,title){
  const main=extractSearchTerms(sceneText,title);
- const secondary=extractSearchTerms(title,sceneText);
+ const secondary=extractSearchTerms(title,"");
  const sceneOnly=extractSearchTerms(sceneText,"");
  return [...new Set([main,secondary,sceneOnly].filter(Boolean))];
 }
@@ -389,7 +389,7 @@ async function renderLocally(){
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
  const ctx=canvas.getContext("2d",{alpha:false});if(!ctx)throw Error("Canvas çizim alanı açılamadı.");
- const canvasStream=canvas.captureStream(fps),audioDestination=audioContext.createMediaStreamDestination(),source=audioContext.createBufferSource();
+ const canvasStream=canvas.captureStream(fps),videoTrack=canvasStream.getVideoTracks()[0],audioDestination=audioContext.createMediaStreamDestination(),source=audioContext.createBufferSource();
  source.buffer=clean;source.connect(audioDestination);
  const stream=new MediaStream([...canvasStream.getVideoTracks(),...audioDestination.stream.getAudioTracks()]);
  let recorder;try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:quality==="720"?3800000:7000000,audioBitsPerSecond:192000});}
@@ -405,7 +405,7 @@ async function renderLocally(){
   const chunks=[];
   recorder.onerror=()=>fail(Error("Safari MP4 kodlama işlemini durdurdu."));
   recorder.onstop=()=>{stopTracks();if(settled)return;const blob=new Blob(chunks,{type:recorder.mimeType||mime});if(blob.size<80000)fail(Error("MP4 kaydı boş veya eksik. Kaliteyi 720p yapıp yeniden dene."));else{settled=true;resolve(blob);}};
-  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);setProgress(96);finishDelay=setTimeout(finish,350);};
+  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);videoTrack?.requestFrame?.();setProgress(96);finishDelay=setTimeout(finish,350);};
   try{recorder.start();}catch(e){fail(Error("Safari kayıt başlatamadı: "+e.message));return;}
   startedAt=audioContext.currentTime;
   finishTimer=setTimeout(()=>{if(!stopped)fail(Error("Sesin tamamı çalınmadan render zaman aşımına uğradı. Safari'yi önde tut ve 720p ile tekrar dene."));},Math.ceil(clean.duration*1000)+18000);
