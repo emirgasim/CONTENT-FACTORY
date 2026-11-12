@@ -98,15 +98,16 @@ function makeSceneStyles(count,seed){
  return styles;
 }
 function extractSearchTerms(text,title){
- const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\p{L}\p{N}]{3,}/gu)||[];
- const seen=new Set(),selected=[];
- for(const word of words){if(STOP.has(word)||seen.has(word))continue;seen.add(word);selected.push(word);if(selected.length>=6)break;}
- return selected.join(" ")||title||text.slice(0,60);
+ const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\\p{L}\\p{N}]{3,}/gu)||[];
+ const aliases={"oyun":"video game arcade","oyuncu":"video game","harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth","uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog","bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned","ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes","minecraft":"voxel game","pacman":"arcade game"};
+ const seen=new Set(),selected=[],translated=[];
+ for(const word of words){if(STOP.has(word)||seen.has(word))continue;seen.add(word);selected.push(word);if(aliases[word])translated.push(aliases[word]);if(selected.length>=6)break;}
+ return [...translated,...selected.slice(0,4)].join(" ")||title||text.slice(0,60);
 }
 function permittedLicense(label){
  const s=String(label||"").toLowerCase();
- if(/non.?commercial|\bnd\b|no.?derivatives/.test(s))return false;
- return /cc0|cc 0|cc by|cc-by|public domain/.test(s);
+ if(/non.?commercial|\\bnc\\b|cc\\s*by[- ]nc|\\bnd\\b|cc\\s*by[- ]nd|no.?derivatives/.test(s))return false;
+ return /cc0|cc 0|cc[- ]by(?:[- ]sa)?|public domain/.test(s);
 }
 function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();}
 async function searchCommons(query){
@@ -246,7 +247,7 @@ function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles){
  const caption=scene.caption.trim(),words=caption.split(/\s+/);let font=Math.round(w*(words.length<5?.082:words.length<9?.071:.063)),lines=[];
  ctx.textAlign="center";ctx.textBaseline="middle";
  do{ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";lines=wrapLines(ctx,caption,w*.88,4);font-=2;}while(lines.length>3&&font>w*.047);
- const lineHeight=font*1.15,blockHeight=lines.length*lineHeight,startY=h*.685-blockHeight/2;
+ const lineHeight=font*1.15,blockHeight=lines.length*lineHeight,startY=h*.735-blockHeight/2;
  lines.forEach((line,i)=>{
   const yy=startY+i*lineHeight;
   if(i===0&&lines.length>1){ctx.fillStyle=style.paper;const tw=Math.min(w*.9,ctx.measureText(line).width+w*.08);ctx.fillRect((w-tw)/2,yy-lineHeight*.43,tw,lineHeight*.86);ctx.fillStyle=style.ink;}
