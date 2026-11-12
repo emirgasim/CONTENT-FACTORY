@@ -10,11 +10,24 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ secrets.HF_TOKEN != '' && secrets.HF_SPACE_ID != '' }}
     steps:
+      - name: Check deployment secrets
+        id: preflight
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+        run: |
+          if [ -n "$HF_TOKEN" ] && [ -n "$HF_SPACE_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Hugging Face secrets are not configured; deployment skipped."
+          fi
       - name: Checkout repository
+        if: steps.preflight.outputs.ready == 'true'
         uses: actions/checkout@v4
-      - name: Prepare Hugging Face Space repository
+      - name: Push engine folder to Hugging Face Space
+        if: steps.preflight.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
