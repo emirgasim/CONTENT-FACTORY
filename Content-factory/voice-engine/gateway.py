@@ -632,3 +632,95 @@ def cleanup_old_jobs() -> None:
             value = JOBS.pop(key, None)
             if value:
                 shutil.rmtree(value.get("directory", ""), ignore_errors=True)
+
+
+# ---- YouTube Agent Hub bridge (no Claude/LLM API required) ----
+AGENT_DIR = APP_DIR.parent / "agent"
+AGENT_TOOLS = {
+    "hookscore": "hookscore.py",
+    "title": "title.py",
+    "deadair": "deadair.py",
+    "chapters": "chapters.py",
+    "retention": "retention.py",
+    "viral": "swipe.py",
+}
+
+@app.get("/api/agent/registry")
+async def agent_registry(_auth: None = Depends(require_access)) -> dict[str, Any]:
+    registry_path = AGENT_DIR / "registry.json"
+    if not registry_path.is_file():
+        raise HTTPException(status_code=503, detail="YouTube Agent Hub dosyaları bulunamadı.")
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    return {
+        "name": registry.get("name"),
+        "version": registry.get("version"),
+        "management": registry.get("management"),
+        "skills": registry.get("skills", []),
+        "tools": sorted(AGENT_TOOLS.keys()),
+    }
+
+@app.post("/api/agent/run")
+async def agent_run(request: Request, _auth: None = Depends(require_access)) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Geçersiz JSON isteği.")
+    tool = str(payload.get("tool", "")).strip()
+    if tool not in AGENT_TOOLS:
+        raise HTTPException(status_code=400, detail="İzin verilmeyen ajan aracı.")
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=400, detail="Araç parametreleri nesne olmalı.")
+    args = [os.getenv("PYTHON", "python"), str(AGENT_DIR / "tools" / AGENT_TOOLS[tool]), "--json"]
+    temp_path = None
+    try:
+        if tool == "hookscore":
+            hook = str(params.get("hook", "")).strip()
+            if not hook or len(hook) > 500:
+                raise HTTPException(status_code=400, detail="Kanca metni 1–500 karakter olmalı.")
+            args += ["--hook", hook]
+        elif tool == "title":
+            title = str(params.get("title", "")).strip()
+            thumb = str(params.get("thumb", "")).strip()
+            if not title or len(title) > 120 or len(thumb) > 80:
+                raise HTTPException(status_code=400, detail="Başlık 1–120, kapak metni en fazla 80 karakter olmalı.")
+            args += ["--title", title]
+            if thumb: args += ["--thumb", thumb]
+        else:
+            file_field = {"deadair": "srt", "chapters": "srt", "retention": "csv", "viral": "json"}[tool]
+            content = str(params.get(file_field, "")).strip()
+            if not content or len(content.encode("utf-8")) > 2 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Gerekli dosya içeriği boş veya 2 MB sınırını aşıyor.")
+            suffix = {"deadair": ".srt", "chapters": ".srt", "retention": ".csv", "viral": ".json"}[tool]
+            with tempfile.NamedTemporaryFile("w", suffix=suffix, encoding="utf-8", delete=False) as tmp:
+                tmp.write(content); temp_path = tmp.name
+            args.append(temp_path)
+            if tool == "deadair":
+                floor = float(params.get("floor", 0.45))
+                if not 0.1 <= floor <= 3: raise HTTPException(status_code=400, detail="Sessizlik eşiği 0.1–3 saniye olmalı.")
+                args += ["--floor", str(floor)]
+            if tool == "chapters":
+                target = int(params.get("target", 7))
+                if not 3 <= target <= 20: raise HTTPException(status_code=400, detail="Bölüm sayısı 3–20 arasında olmalı.")
+                args += ["--target", str(target)]
+            if tool == "retention":
+                duration = float(params.get("duration", 0) or 0)
+                if duration > 0:
+                    if duration > 86400: raise HTTPException(status_code=400, detail="Video süresi geçersiz.")
+                    args += ["--duration", str(duration)]
+        result = subprocess.run(args, capture_output=True, text=True, timeout=45, cwd=str(AGENT_DIR))
+        if result.returncode != 0:
+            raise HTTPException(status_code=422, detail=(result.stderr or result.stdout or "Araç çalıştırılamadı.")[-1500:])
+        try: output = json.loads(result.stdout)
+        except Exception: output = {"text": result.stdout}
+        return {"ok": True, "tool": tool, "result": output}
+    except HTTPException:
+        raise
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Ajan aracı zaman aşımına uğradı.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Ajan aracı hatası: " + str(exc)[:500])
+    finally:
+        if temp_path:
+            try: os.unlink(temp_path)
+            except OSError: pass
