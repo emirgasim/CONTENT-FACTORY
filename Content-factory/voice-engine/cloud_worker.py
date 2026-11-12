@@ -39,7 +39,10 @@ def render(job_id):
   def persistent_update(current_id,**values):
    original_update(current_id,**values)
    with gateway.JOBS_LOCK:snapshot=dict(gateway.JOBS.get(current_id,{}))
-   if snapshot:put_json(s3,job_key(job_id,"status.json"),public_status(snapshot))
+   if snapshot:
+    cloud_state=public_status(snapshot)
+    if cloud_state.get("status")=="completed":cloud_state.update({"status":"uploading","progress":96,"message":"MP4 ve kaynak dosyaları geçici bulut alanına yükleniyor…"})
+    put_json(s3,job_key(job_id,"status.json"),cloud_state)
   gateway.update_job=persistent_update
   try:gateway.render_short_job(job_id)
   finally:gateway.update_job=original_update
