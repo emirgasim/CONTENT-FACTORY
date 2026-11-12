@@ -16,12 +16,16 @@ The Shorts Factory produces vertical MP4 directly in iPhone Safari. No render se
 
 ## Source and license handling
 
-- Commons is queried through its public MediaWiki Action API with CORS, image information, thumbnails and extended license metadata.
+- Commons is queried through its public MediaWiki Action API with CORS, image information, thumbnails and extended license metadata. Search results are paginated (50 per API page); there is no fixed 8-image or fixed per-video image limit. The target is calculated from narration duration, at roughly one distinct visual every 2.5 seconds, separately for each scene. Search continues through API pages and query variants until that target is met or the source has no more eligible results.
 - CC0, Public Domain, CC BY and CC BY-SA are accepted. NonCommercial and NoDerivatives variants are excluded.
-- Each selected file's author, license, license URL and Commons file page are written to the source/license report.
+- Each selected file's author, license, license URL and Commons file page are written to the source/license report. The renderer cycles through the scene's collected images at the same 2.5-second visual cadence.
 - Wikimedia Commons licensing guidance: https://commons.wikimedia.org/wiki/Commons:Licensing
 - CC BY and CC BY-SA require attribution. CC BY-SA includes a share-alike condition; follow each selected file's specific terms.
 - Stock-image matching depends on the public Commons search index and available license metadata. If an eligible image cannot be found or fetched, the renderer records the fallback and uses original graphic art rather than claiming an image was found.
+
+## Optional desktop-only Python stock-library prototype
+
+The separate Python prototype uses `requests`, `beautifulsoup4`, `pillow` and `playwright`. Its setup commands are `pip install requests beautifulsoup4 pillow playwright` and `playwright install chromium`. These commands run on a computer with Python, not inside iPhone Safari. They are not required by the iPhone-only Shorts Factory, which performs its stock-image search and rendering in the browser. The prototype's Bing HTML scraping does not establish image reuse rights; do not treat a Bing result as licensed unless the original source's license is independently verified.
 
 ## iPhone render constraints
 
