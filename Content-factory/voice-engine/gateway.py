@@ -48,7 +48,9 @@ POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cf-render")
 
 
 def require_access(x_factory_token: str | None = Header(default=None)) -> None:
-    if API_TOKEN and x_factory_token != API_TOKEN:
+    if not API_TOKEN:
+        raise HTTPException(status_code=503, detail="Motor yöneticisi FACTORY_API_TOKEN ayarlamamış. Servis yöneticisine başvur.")
+    if x_factory_token != API_TOKEN:
         raise HTTPException(status_code=401, detail="Geçersiz Content Factory erişim anahtarı.")
 
 
