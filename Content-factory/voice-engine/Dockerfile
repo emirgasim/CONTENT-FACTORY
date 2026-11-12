@@ -2,9 +2,7 @@
 FROM mambaorg/micromamba:1.5.8
 
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg git libsndfile1 fonts-dejavu-core ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git libsndfile1 fonts-dejavu-core ca-certificates curl && mkdir -p /data/.cache/huggingface && chown -R ${MAMBA_USER}:${MAMBA_USER} /data && rm -rf /var/lib/apt/lists/*
 
 USER $MAMBA_USER
 WORKDIR /app
@@ -13,13 +11,9 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /app/environment.yml
 RUN micromamba env create -f /app/environment.yml
 
 ARG MOSS_COMMIT=8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb
-RUN git init /opt/moss && cd /opt/moss \\
-    && git remote add origin https://github.com/OpenMOSS/MOSS-TTS-Nano.git \\
-    && git fetch --depth 1 origin $MOSS_COMMIT \\
-    && git checkout FETCH_HEAD
-RUN micromamba run -n content-factory pip install --no-cache-dir -r /opt/moss/requirements.txt \
-    && micromamba run -n content-factory pip install --no-cache-dir -e /opt/moss \
-    && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx
+RUN git init /opt/moss && cd /opt/moss && git remote add origin https://github.com/OpenMOSS/MOSS-TTS-Nano.git && git fetch --depth 1 origin $MOSS_COMMIT && git checkout FETCH_HEAD
+
+RUN micromamba run -n content-factory pip install --no-cache-dir -r /opt/moss/requirements.txt && micromamba run -n content-factory pip install --no-cache-dir -e /opt/moss && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER gateway.py /app/gateway.py
 COPY --chown=$MAMBA_USER:$MAMBA_USER start.sh /app/start.sh
