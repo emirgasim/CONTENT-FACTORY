@@ -29,6 +29,9 @@ jobs:
         run: |
           node --input-type=module --check < Content-factory/functions/api/agent/registry.js
           node --input-type=module --check < Content-factory/functions/api/agent/run.js
+          node --input-type=module --check < Content-factory/functions/api/shorts/jobs.js
+          node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId].js'
+          node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId]/[asset].js'
       - name: Check Python engine syntax
         run: python -m py_compile Content-factory/voice-engine/gateway.py
       - name: Check required application files
