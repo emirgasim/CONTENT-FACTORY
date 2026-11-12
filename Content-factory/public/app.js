@@ -92,7 +92,7 @@ const AGENT_SKILLS=[
 {id:"yt-package",label:"Başlık ve kapak",mode:"tool",tool:"title",description:"Başlığın uzunluğunu, mobil görünümünü ve kapak metniyle tekrarını kontrol eder.",help:"Bu kontrol başlık kalitesine dair teknik uyarı verir; tıklanma oranını garanti etmez.",fields:[["title","Video başlığı","input","Başlığı yaz…",true],["thumb","Kapak metni (isteğe bağlı)","input","Kapakta görünen kısa metin…",false]]},
 {id:"yt-plan",label:"Yayın planı",mode:"chat",description:"Gerçek zamanına ve hazırladığın işlere uygun haftalık veya aylık YouTube yayın planı hazırlar.",help:"Planı gerçek kapasiteye göre kurmak için haftalık zamanını ve yarım kalmış içeriklerini belirt.",fields:[["hours","Haftalık ayırabileceğin süre","input","Örn. 8 saat",true],["unfinished","Hazır veya yarım kalmış işler","textarea","Hazır videolar, çekilmiş sesler, taslaklar…",false],["goal","Hedeflenen yayın sayısı ve format","input","Örn. 3 Shorts + 1 uzun video",false],["analytics","YouTube Studio'dan bilinen iyi yayın gün/saatleri","input","Bilmiyorsan boş bırak",false]]},
 {id:"yt-retention",label:"İzleyici tutma",mode:"tool",tool:"retention",description:"YouTube Studio retention CSV verisindeki açılış kaybını ve en sert düşüşleri bulur.",help:"CSV içeriğini YouTube Studio dışa aktarımından yapıştır. Sütunlar zaman/konum ve izleyici tutma yüzdesi olmalı.",fields:[["csv","Audience retention CSV içeriği","textarea","CSV içeriğini yapıştır…",true],["duration","Video süresi (saniye, isteğe bağlı)","input","Örn. 615",false]]},
-{id:"yt-script",label:"Senaryo ve kancalar",mode:"chat",description:"21 kanca yaklaşımından beş açılış alternatifi, puanlama ve ekranda görülecek sahnelerle senaryo hazırlar.",help:"Konu, hedef izleyici ve istediğin süreyi belirt. Senaryoda kaynak gerektiren iddialar doğrulanmalı.",fields:[["topic","Video konusu / fikri","textarea","Videonun fikrini anlat…",true],["audience","Hedef izleyici","input","Örn. Türkçe Shorts izleyicisi",false],["duration","Hedef süre ve format","input","Örn. 40–45 saniye, 9:16 Shorts",false],["constraints","Üslup ve özel kurallar","textarea","Ton, yasaklı ifadeler, kaynak beklentisi…",false]]},
+{id:"yt-script",label:"Senaryo ve kancalar",mode:"chat",description:"21 kanca yaklaşımından beş açılış alternatifi, puanlama ve ekranda görülecek sahnelerle senaryo hazırlar.",help:"Konu, hedef izleyici ve istediğin süreyi belirt. Senaryoda kaynak gerektiren iddialar doğrulanmalı.",fields:[["topic","Video konusu / fikri","textarea","Videonun fikrini anlat…",true],["audience","Hedef izleyici","input","Örn. Türkçe Shorts izleyicisi",false],["duration","Hedef süre ve format","input","Örn. 40–45 saniye, 9:16 Shorts",false],["constraints","Üslup ve özel kurallar","textarea","Ton, yasaklı ifadeler, kaynak beklentisi…",false],["hookCandidates","Puanlamak istediğin kanca taslakları (her satıra bir tane)","textarea","Kancaları alt alta yapıştır…",false]]},
 {id:"yt-seo",label:"YouTube SEO",mode:"chat",description:"Arama niyetine göre başlık, ilk iki açıklama satırı, açıklama ve anlamlı etiketler üretir.",help:"Anahtar kelimeyi ve videonun gerçekten ne sunduğunu belirt. Alakasız etiket doldurmayacağız.",fields:[["topic","Video konusu ve içeriğin özeti","textarea","Video ne anlatıyor?…",true],["keyword","Öncelikli arama ifadesi","input","İzleyicinin arayacağı ifade…",false],["title","Mevcut başlık (varsa)","input","Mevcut başlık…",false],["audience","Hedef izleyici / dil","input","Örn. Türkiye, Türkçe",false]]},
 {id:"yt-shorts",label:"Uzun videodan Shorts",mode:"chat",description:"Uzun videonun altyazısından tek başına anlaşılabilen, 20–55 saniyelik Shorts adayları bulur.",help:"Zaman kodlu SRT/VTT altyazıyı ekle. En iyi beş kesit için zaman aralığı, yeni kanca ve döngü fikri hazırlanır.",fields:[["transcript","Zaman kodlu SRT / VTT altyazı","textarea","Altyazıyı buraya yapıştır…",true],["count","İstenen Shorts adedi","input","5",false],["style","Kurgu / anlatım tercihi","textarea","Sessiz, konuşmalı, altyazılı, yüz kamerası…",false]]},
 {id:"yt-viral",label:"Viral analiz",mode:"tool",tool:"viral",description:"Verdiğin video listesini her kanalın kendi medyan görüntülenmesiyle karşılaştırır.",help:"Her kanaldan en az dört video içeren JSON verisi gerekir. Araç YouTube'dan otomatik veri çekmez.",fields:[["json","Video verileri JSON","textarea",'[{"channel":"Kanal","title":"Video başlığı","views":120000,"url":"https://..."}]',true]]}
@@ -115,7 +115,7 @@ function selectSkill(id){
  $("#skillTitle").textContent=skill.label;$("#skillDescription").textContent=skill.description;
  $("#skillMode").textContent=skill.mode==="tool"?"PANELDE ÇALIŞAN ANALİZ":"CHATGPT GÖREVİ";
  $("#skillHelp").textContent=skill.help;
- $("#skillAction").textContent=skill.mode==="tool"?"Analizi şimdi çalıştır":"Denetim / görev paketini hazırla";
+ $("#skillAction").textContent=skill.mode==="tool"?"Analizi şimdi çalıştır":"Denetim / görev paketini hazırla";$("#scoreHooks").classList.toggle("hidden",skill.id!=="yt-script");
  $("#skillResult").classList.add("hidden");$("#skillResult").replaceChildren();
  $("#skillPromptWrap").classList.add("hidden");$("#skillPrompt").value="";
  renderSkillInputs(skill);$("#skillWorkspace").classList.remove("hidden");
@@ -180,12 +180,26 @@ async function runSelectedSkill(){
  }catch(e){setStatus("#agentStatus",e.message);$("#skillResult").classList.remove("hidden");$("#skillResult").textContent="İşlem yapılamadı: "+e.message}
  finally{button.disabled=false;button.textContent=activeSkill?.mode==="tool"?"Analizi şimdi çalıştır":"Görev paketini oluştur"}
 }
+async function scoreHookCandidates(){
+ const raw=$("#skill-hookCandidates")?.value||"";
+ const hooks=raw.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean).slice(0,10);
+ if(!hooks.length){setStatus("#agentStatus","Önce puanlanacak kanca taslaklarını alt alta yaz.");return}
+ const button=$("#scoreHooks");button.disabled=true;button.textContent="Kancalar puanlanıyor…";
+ try{
+  const scored=await Promise.all(hooks.map(async hook=>{const r=await fetch("/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tool:"hookscore",params:{hook}})});const d=await r.json();if(!r.ok)throw Error(d.detail||"Kanca puanlanamadı.");return d.result}));
+  scored.sort((a,b)=>b.score-a.score);const root=$("#skillResult");root.replaceChildren();root.classList.remove("hidden");
+  const heading=document.createElement("h4");heading.textContent="Kanca puanları · en güçlüden en zayıfa";root.append(heading);
+  scored.forEach((x,i)=>appendLine(root,"#"+(i+1)+" · "+x.score+"/100",x.hook+" · "+x.verdict+" · En zayıf alan: "+x.weakest));
+  setStatus("#agentStatus",scored.length+" kanca puanlandı. Skorlar izlenme garantisi değildir.");
+ }catch(e){setStatus("#agentStatus","Kanca puanlama hatası: "+e.message)}
+ finally{button.disabled=false;button.textContent="Yazdığım kancaları puanla"}
+}
 function loadAgentHub(){
  const root=$("#agentSkills");root.replaceChildren();
  AGENT_SKILLS.forEach(skill=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=skill.label;b.title=skill.id;b.dataset.skill=skill.id;b.addEventListener("click",()=>selectSkill(skill.id));root.append(b)});
  fetch("/api/agent/registry").then(r=>r.ok?r.json():Promise.reject(Error("HTTP "+r.status))).then(data=>setStatus("#agentStatus",data.skills.length+" uzmanlık hazır · "+data.tools.length+" panel içi analiz aracı. Bir uzmanlık seçerek başla.")).catch(e=>setStatus("#agentStatus","Ajan listesi okunamadı: "+e.message));
 }
-$("#skillAction").addEventListener("click",runSelectedSkill);
+$("#skillAction").addEventListener("click",runSelectedSkill);$("#scoreHooks").addEventListener("click",scoreHookCandidates);
 $("#closeSkill").addEventListener("click",()=>{$("#skillWorkspace").classList.add("hidden");activeSkill=null;document.querySelectorAll(".agent-skill").forEach(b=>b.classList.remove("active"))});
 $("#copySkillPrompt").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("#skillPrompt").value);setStatus("#agentStatus","Görev kopyalandı. Bu sohbet alanına yapıştırıp gönder.")}catch(e){$("#skillPrompt").focus();$("#skillPrompt").select();setStatus("#agentStatus","Metni seçip Kopyala komutunu kullan.")}});
 loadAgentHub();
