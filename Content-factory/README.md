@@ -7,9 +7,9 @@ iPhone-first Shorts workflow. GPT sohbeti konu araştırmasını ve 40–45 sani
 1. GPT sohbetinde tek konu için yaklaşık 40–45 saniyelik metni hazırla.
 2. Panelde **Shorts Factory** aç ve metni yapıştır.
 3. **Kayda başla** ile iPhone mikrofonundan metni oku; **Kaydı bitir** ile durdur.
-4. Kaydı sayfa içindeki oynatıcıdan dinle. Gerekirse yeniden kaydet.
-5. **Kaydımı dinle** önizlemesini aç ve **Sesi onayla ve videoyu hazırla** düğmesine bas.
-6. Kayıt doğrudan render motoruna gönderilir. Motor uzun sessizlikleri azaltır, konuşmayı analiz eder, görsel sahneler hazırlar ve 9:16 MP4 üretir.
+4. Sesini oynatıcıdan kontrol et; gerekirse yeniden kaydet veya başka bir dosya seç.
+5. **Sessizlikleri temizle ve videoyu hazırla** düğmesine bir kez bas.
+6. Seçilen ses dosyası doğrudan render motoruna gönderilir. Motor uzun sessizlikleri azaltır, konuşmayı analiz eder, görsel sahneler hazırlar ve 9:16 MP4 üretir.
 7. MP4 ve varsa temizlenmiş ses/kaynak dökümünü indir.
 8. İkinci konu için yeni Shorts başlat; CapCut'ta kendi yüz kliplerinle birleştir.
 
@@ -28,6 +28,8 @@ iPhone-first Shorts workflow. GPT sohbeti konu araştırmasını ve 40–45 sani
 - Cloudflare Pages hosts the static web UI.
 - Python engine in `voice-engine/` must run separately and be reachable over HTTPS. It cannot run inside Cloudflare Pages.
 - Website → **Motor ayarı**: enter engine URL and the same `FACTORY_API_TOKEN` configured on the engine.
+- MP3/M4A/WAV and other supported audio inputs retain their detected filename extension for FFmpeg decoding.
+- The frontend checks `/health` and confirms FFmpeg is present before submitting a render.
 - The frontend expects:
   - `GET /health`
   - `POST /api/shorts/render` multipart fields `text`, `title`, `audio`
