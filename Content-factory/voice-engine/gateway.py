@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -516,6 +517,15 @@ def wrap_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, 
     return lines
 
 
+def draw_rounded_compat(draw: ImageDraw.ImageDraw, xy, radius: int = 24, **kwargs) -> None:
+    """Pillow compatibility: use rounded corners when available, safe rectangle fallback otherwise."""
+    method = getattr(draw, "rounded_rectangle", None)
+    if callable(method):
+        method(xy, radius=radius, **kwargs)
+    else:
+        draw.rectangle(xy, **kwargs)
+
+
 def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, x: int, y: int, max_width: int, fill: str, max_lines: int = 4) -> int:
     lines = wrap_lines(draw, text, font, max_width)[:max_lines]
     for line in lines:
@@ -556,7 +566,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         od.rectangle((0, 1390, width, height), fill=(10, 12, 20, 205))
         canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(canvas)
-        draw.rounded_rectangle((55, 60, 520, 155), radius=35, fill=color)
+        draw_rounded_compat(draw,(55, 60, 520, 155), radius=35, fill=color)
         draw.text((90, 79), "BİLİNMEYEN GERÇEK", font=small_font, fill="#141414")
         draw_wrapped(draw, text, title_font, 58, 1480, 960, "white", 4)
     elif layout == "split" and bg_asset is not None:
@@ -566,7 +576,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         draw.rectangle((0, 0, 650, 180), fill="#12141D")
         draw.text((44, 60), "GERÇEK / DETAY", font=small_font, fill="white")
         draw_wrapped(draw, text, load_font(58), 690, 580, 340, "#121212", 7)
-        draw.rounded_rectangle((690, 1510, 1030, 1800), radius=45, fill="#12141D")
+        draw_rounded_compat(draw,(690, 1510, 1030, 1800), radius=45, fill="#12141D")
         draw.text((730, 1580), "DEVAMINI", font=load_font(38), fill="white")
         draw.text((730, 1640), "KEŞFET", font=load_font(54), fill=color)
     elif layout == "collage":
@@ -575,7 +585,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
             canvas.paste(cover_image(bg_asset, (width - 100, 760)), (50, 70))
         if second_asset is not None:
             canvas.paste(cover_image(second_asset, (470, 530)), (70, 910))
-        draw.rounded_rectangle((565, 930, 1010, 1460), radius=34, fill="#171923")
+        draw_rounded_compat(draw,(565, 930, 1010, 1460), radius=34, fill="#171923")
         draw_wrapped(draw, text, load_font(46), 605, 1010, 360, "white", 6)
         draw.text((60, 1630), "BİR DETAY HER ŞEYİ DEĞİŞTİRİR", font=load_font(34), fill="#171923")
     else:
@@ -583,11 +593,11 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         if bg_asset is not None:
             photo = cover_image(bg_asset, (780, 700))
             canvas.paste(photo, (150, 170))
-            draw.rounded_rectangle((120, 130, 960, 940), radius=34, outline="#151515", width=14)
+            draw_rounded_compat(draw,(120, 130, 960, 940), radius=34, outline="#151515", width=14)
         draw.ellipse((770, 1000, 1030, 1260), fill="#FF9C69", outline="#151515", width=8)
         draw.text((835, 1075), "!", font=load_font(130), fill="#151515")
         draw_wrapped(draw, text, load_font(76), 65, 1320, 950, "#151515", 5)
-        draw.rounded_rectangle((60, 1770, 700, 1870), radius=35, fill="#151515")
+        draw_rounded_compat(draw,(60, 1770, 700, 1870), radius=35, fill="#151515")
         draw.text((100, 1797), "BİLGİ · MERAK · KEŞİF", font=small_font, fill="white")
     if hook:
         banner = PALETTE[(index + 2) % len(PALETTE)]
@@ -731,6 +741,7 @@ def render_short_job(job_id: str) -> None:
             scene_count=len(clips), source_count=len(source_records),
         )
     except Exception as exc:
+        traceback.print_exc()
         update_job(job_id, status="failed", progress=100, message="Render başarısız.", error=str(exc)[:2000])
 
 
