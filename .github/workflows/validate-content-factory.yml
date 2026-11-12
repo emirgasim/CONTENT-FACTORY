@@ -1,0 +1,33 @@
+name: Validate Content Factory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Content-factory/**"
+      - ".github/workflows/validate-content-factory.yml"
+  pull_request:
+    paths:
+      - "Content-factory/**"
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check frontend JavaScript
+        run: node --check Content-factory/public/app.js
+      - name: Check Python engine syntax
+        run: python -m py_compile Content-factory/voice-engine/gateway.py
+      - name: Check required application files
+        run: |
+          test -s Content-factory/public/index.html
+          test -s Content-factory/public/style.css
+          test -s Content-factory/voice-engine/Dockerfile
+          test -s Content-factory/voice-engine/start.sh
