@@ -29,7 +29,7 @@ MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(30 * 1024 * 1024)))
 JOB_TTL_SECONDS = int(os.getenv("JOB_TTL_SECONDS", "7200"))
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "ContentFactory/1.0 (Short-form video creator; license-aware media search)"
-PALETTE = ["#F7E34A", "#85E8DF", "#D9A5F5", "#FF9C69", "#94EB4B", "#5677F5"]
+PALETTE = ["#FFE600", "#FF2694", "#00BFF3", "#FF6A00", "#B8F500", "#762BFF", "#FF3D27", "#00B989", "#165CFF", "#F500A3"]
 STOP_WORDS = set("""ve veya ama fakat çünkü gibi için ile bir bu şu o da de ki ne mi mı mu mü daha çok az her bazı nasıl neden niçin zaman zamanında olan olanlar olarak sonra önce kadar göre ise hem ya yani diye kadar tüm bütün çok şey yeni eski ilk son birisi insan insanlar oyun oyunlar video bugün gerçekten aslında""".split())
 
 app = FastAPI(title="Content Factory Voice & Video Engine", version="0.2.0")
@@ -706,6 +706,7 @@ def render_short_job(job_id: str) -> None:
             for item in source_records:
                 credits.extend([
                     "- " + item.get("title", "Adsız dosya"),
+                    "  Kaynak: " + (item.get("source") or "Açık görsel koleksiyonu"),
                     "  Sanatçı: " + (item.get("author") or "Belirtilmemiş"),
                     "  Lisans: " + (item.get("license") or "Belirtilmemiş"),
                     "  Lisans bağlantısı: " + (item.get("license_url") or "Belirtilmemiş"),
