@@ -354,7 +354,7 @@ function init(){
  $("#downloadVideo").onclick=()=>download(state.videoUrl,($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4");
  $("#downloadCleanAudio").onclick=()=>download(state.audioUrl,"shorts-cleaned-voice.wav");
  $("#downloadCredits").onclick=()=>download(state.creditsUrl,"sources-and-licenses.txt");
- $("#visualFiles").onchange=async e=>{state.visualFiles=await loadOwnImages(Array.from(e.target.files||[]).slice(0,8));setText("#visualStatus",state.visualFiles.length+" görsel seçildi. Bu fotoğraflar internet görselleriyle birlikte kullanılacak.");};
+ $("#visualFiles").onchange=async e=>{state.visualFiles=Array.from(e.target.files||[]).slice(0,8);setText("#visualStatus",state.visualFiles.length+" referans görsel seçildi. İnternet görselleri her sahne için ayrıca aranacak.");};
  $("#scriptText").addEventListener("input",capabilities);$("#localQuality").addEventListener("change",capabilities);
  capabilities();
  const status=$("#recordStatus");if(status&&window.MutationObserver)new MutationObserver(capabilities).observe(status,{childList:true,subtree:true,characterData:true});
