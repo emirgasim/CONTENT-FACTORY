@@ -1,61 +1,45 @@
 # Content Factory
 
-iPhone-first Shorts workflow. GPT sohbeti konu araştırmasını ve 40–45 saniyelik seslendirme metnini hazırlar. Kullanıcı metni panelde yapıştırır, iPhone mikrofonuyla doğrudan anlatımı kaydeder, kaydı dinleyip onaylar ve video render işini başlatır.
+iPhone-first Shorts production workspace. The Shorts Factory renders directly in iPhone Safari using browser-native audio, Canvas and MediaRecorder APIs. No Claude, paid API, render server, account token or per-video credits are required for local rendering.
 
-## Current Shorts workflow
+## iPhone Shorts workflow
 
-1. GPT sohbetinde tek konu için yaklaşık 40–45 saniyelik metni hazırla.
-2. Panelde **Shorts Factory** aç ve metni yapıştır.
-3. **Kayda başla** ile iPhone mikrofonundan metni oku; **Kaydı bitir** ile durdur.
-4. Sesini oynatıcıdan kontrol et; gerekirse yeniden kaydet veya başka bir dosya seç.
-5. **Sessizlikleri temizle ve videoyu hazırla** düğmesine bir kez bas.
-6. Seçilen ses dosyası doğrudan render motoruna gönderilir. Motor uzun sessizlikleri azaltır, konuşmayı analiz eder, görsel sahneler hazırlar ve 9:16 MP4 üretir.
-7. MP4 ve varsa temizlenmiş ses/kaynak dökümünü indir.
-8. İkinci konu için yeni Shorts başlat; CapCut'ta kendi yüz kliplerinle birleştir.
+1. Open the site in Safari on the iPhone.
+2. Paste the narration text and enter a topic title.
+3. Record narration with the microphone or select an MP3, M4A or WAV file.
+4. Optionally select up to eight images from Photos / Files. If none are selected, the renderer creates animated graphic scenes itself.
+5. Tap iPhone'da Shorts üret.
+6. The browser decodes the audio locally, detects long low-volume gaps, keeps short natural pauses and joins the remaining audio.
+7. The script is divided into visual beats and distributed over the cleaned audio duration. The renderer animates 9:16 Canvas scenes and records the Canvas plus cleaned audio to MP4 using Safari MediaRecorder.
+8. Preview and save the MP4, cleaned WAV and render notes.
 
-## Microphone recording
+## Local rendering architecture
 
-- Uses browser `getUserMedia({audio})` and `MediaRecorder`; no file picker or separate audio upload is needed.
-- Requires HTTPS and explicit microphone permission. On iPhone, use Safari and allow microphone access when prompted.
-- Supported recording MIME type is selected from audio/mp4 or WebM variants exposed by the browser. Actual support varies by iOS/Safari version.
-- The recorded narration is held in page memory and sent to the configured render engine only after user approval. It is not stored in GitHub or localStorage.
-- Refreshing or closing the page discards the unsent recording. Keep the page open until render has completed.
-- The user is recording the actual narration; this workflow does not synthesize cloned speech or need a reference audio upload.
+- public/local-render.js: browser-only audio analysis, silence edit decision list, scene planning, Canvas animation, audio mixing, MP4 recording and local downloads.
+- public/app.js: UI, microphone capture, file selection and state.
+- public/index.html: iPhone-first interface.
+- Cloudflare Pages serves static files only. It does not process the audio or video.
+- No audio, script or selected image is uploaded to a render service by the Shorts Factory local render path.
+- MP4 output is feature-detected. Safari must report video/mp4 MediaRecorder support; the app will not silently rename a WebM file to MP4.
+- Default output: 1080 × 1920, 24 fps. A 720 × 1280 option is available for lower-memory devices.
+- The initial local renderer accepts audio up to 3 minutes and up to 8 optional user images.
 
-## Architecture and deployment
+## Current capability boundaries
 
-- GitHub stores source code only.
-- Cloudflare Pages hosts the static web UI.
-- Python engine in `voice-engine/` must run separately and be reachable over HTTPS. It cannot run inside Cloudflare Pages.
-- Website → **Motor ayarı**: enter engine URL and the same `FACTORY_API_TOKEN` configured on the engine.
-- MP3/M4A/WAV and other supported audio inputs retain their detected filename extension for FFmpeg decoding.
-- The frontend checks `/health` and confirms FFmpeg is present before submitting a render.
-- The frontend expects:
-  - `GET /health`
-  - `POST /api/shorts/render` multipart fields `text`, `title`, `audio`
-  - `GET /api/jobs/{job_id}`
-  - `GET /api/jobs/{job_id}/video`
-  - `GET /api/jobs/{job_id}/audio`
-  - `GET /api/jobs/{job_id}/credits`
+- Silence detection is waveform/RMS based. It shortens long low-volume gaps while retaining a small amount of room tone. Very quiet speech may be mistaken for silence; always review the result.
+- Script timing is currently distributed over the cleaned audio using word-count weights. This is approximate timing, not local Whisper transcription or exact word-level forced alignment.
+- Visuals are original animated graphic compositions and optional images selected by the user. This initial iPhone-only build does not automatically download stock footage or search Wikimedia; no external stock API or media service is called.
+- The renderer does not yet generate a natural-language visual storyboard from an LLM. It uses deterministic scene layouts based on the script text.
+- iPhone Safari must remain open in the foreground during rendering. Screen Wake Lock is requested where supported, but iOS may still interrupt long tasks or background tabs.
+- Browser memory, battery, thermal throttling and hardware encoder availability limit practical render length and quality. No credits does not mean unlimited device resources.
+- MP4 generation must be tested on the user's exact iPhone/Safari version before treating the workflow as production-ready.
 
-## Rendering capabilities and honest limits
+## Agent Hub
 
-The Python render engine is a separate deployment requirement. A GitHub commit or Cloudflare Pages deployment does not itself start this engine. Configure a reachable engine before expecting MP4 output.
-
-The documented first renderer trims low-volume pauses, transcribes speech with Whisper segment timestamps, searches Wikimedia Commons still images and creates a 1080×1920 MP4 with animated zoom/pan, split layouts, collage and colorful infographic cards. It does not yet search video stock footage, guarantee exact word-level synchronization, or composite the user's face camera footage. It must not be described as a finished full stock-video director until those features are built and tested.
-
-The rendered duration follows the cleaned narration; spoken words are not cut just to force 40–45 seconds. Preview the cleaned result because quiet breaths can be shortened by silence detection.
-
-## Cloudflare Pages settings
-
-- Root directory: `Content-factory`
-- Framework preset: None
-- Build command: empty
-- Build output directory: `public`
+The YouTube Agent Hub remains a separate set of in-panel deterministic analysis tools and ChatGPT task briefs. It is not required by the local Shorts renderer.
 
 ## Security and privacy
 
-- Set a long random `FACTORY_API_TOKEN` on the engine and paste the same token into Motor ayarı.
-- Restrict `ALLOWED_ORIGINS` to the production Pages origin.
-- Only record and use your own voice or a voice you are authorized to use.
-- Do not commit recordings, generated media or secrets to GitHub.
+- GitHub stores source code only.
+- Audio, script and optional images are processed in the browser memory and are not committed to GitHub or sent to a remote render API by the local renderer.
+- The page must be served over HTTPS for microphone access.
