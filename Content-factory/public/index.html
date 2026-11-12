@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#11121a">
+  <title>Content Factory</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✳</span><div><b>CONTENT FACTORY</b><small>CREATIVE VIDEO WORKSPACE</small></div></div>
+      <div class="top-actions"><span class="status"><i></i> Yerel proje modu</span><button id="exportProject" class="btn btn-ghost">Projeyi dışa aktar</button></div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div><div class="eyebrow">YOUR IDEAS → VIDEO SYSTEM</div><h1>Fikrini al.<br><em>Hikâyeye dönüştür.</em></h1>
+        <p>Shorts ve uzun videolar için konu, senaryo, çekim ve dinamik kurgu planını tek yerde yönet.</p></div>
+        <div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>SHORTS / LONG FORM</small></div>
+      </section>
+
+      <section class="mode-grid">
+        <button class="mode-card yellow" data-format="shorts"><span class="mode-icon">↗</span><b>SHORTS FACTORY</b><small>Seri · Part · 2 konu · Seslendirme · Görsel kurgu</small><span class="mode-cta">SHORTS PROJESİ OLUŞTUR ↗</span></button>
+        <button class="mode-card aqua" data-format="long"><span class="mode-icon">▣</span><b>LONG VIDEO FACTORY</b><small>Ana konu · Alt konular · Çekim · Senkron kurgu</small><span class="mode-cta">UZUN VİDEO OLUŞTUR ↗</span></button>
+      </section>
+
+      <section class="workspace">
+        <div class="section-head"><div><div class="eyebrow">WORKSPACE</div><h2>Proje masası</h2></div><div class="head-actions"><button id="importProject" class="btn btn-ghost">JSON içe aktar</button><input id="projectFile" type="file" accept=".json,application/json" hidden></div></div>
+        <div id="emptyState" class="empty"><div class="empty-icon">✳</div><b>Henüz proje yok</b><span>Yukarıdan Shorts veya uzun video projesi başlat.</span></div>
+        <div id="projectList" class="project-list"></div>
+      </section>
+
+      <section id="editor" class="editor hidden">
+        <div class="section-head"><div><div class="eyebrow">PROJECT EDITOR</div><h2 id="editorTitle">Proje</h2></div><button id="closeEditor" class="btn btn-ghost">Kapat</button></div>
+        <div class="editor-grid">
+          <div class="panel">
+            <h3>01 / Proje bilgileri</h3>
+            <label>Proje adı<input id="projectName" placeholder="Örn. Dünyanın bilinmeyen gerçekleri"></label>
+            <label>Ana konu / seri<input id="projectTopic" placeholder="Ana konuyu yaz"></label>
+            <label>Hedef kitle<input id="projectAudience" placeholder="Örn. Genel izleyici"></label>
+            <label>Anlatım tonu<select id="projectTone"><option>Merak uyandırıcı</option><option>Belgesel</option><option>Eğlenceli</option><option>Gerilimli</option><option>Eğitici</option><option>Serbest</option></select></label>
+            <label>Senaryo / seslendirme metni<textarea id="projectScript" rows="7" placeholder="Metnini buraya ekle..."></textarea></label>
+            <button id="saveProject" class="btn btn-primary">Projeyi kaydet</button>
+          </div>
+          <div class="panel">
+            <h3>02 / Medya kaynağı</h3>
+            <p class="muted">Dosya cihazında kalır. Bu başlangıç sürümü videoyu GitHub'a veya buluta yüklemez; yalnızca tarayıcının okuyabildiği temel bilgileri gösterir.</p>
+            <label class="file-drop" for="mediaFile"><span>＋</span><b>Video veya ses seç</b><small>iPhone Fotoğraflar / Dosyalar</small></label>
+            <input id="mediaFile" type="file" accept="video/*,audio/*" hidden>
+            <div id="mediaInfo" class="media-info">Henüz medya seçilmedi.</div>
+            <div class="notice"><b>Uzun video notu</b><br>15 dakikalık ham çekim bu panelden GitHub'a gönderilmez. Güvenilir, kesintide devam eden gerçek video işleme bağlantısı sonraki backend aşamasında kurulacak.</div>
+          </div>
+        </div>
+
+        <div class="panel timeline-panel">
+          <div class="section-head"><div><h3>03 / Akıllı kurgu zaman çizelgesi</h3><p class="muted">Sahne tipini ve zamanını belirle. Gerçek MP4 render motoru henüz bağlı değil.</p></div><button id="addScene" class="btn btn-primary">＋ Sahne ekle</button></div>
+          <div class="timeline-head"><span>ZAMAN</span><span>GÖRSEL DÜZEN</span><span>ANLATIM / SAHNE NOTU</span><span></span></div>
+          <div id="sceneList"></div>
+          <div class="timeline-footer"><button id="exportEdl" class="btn btn-dark">Kurgu planını JSON indir</button><span id="sceneCount" class="muted">0 sahne</span></div>
+        </div>
+      </section>
+
+      <section class="engines">
+        <div class="section-head"><div><div class="eyebrow">PRODUCTION ENGINES</div><h2>Üretim motorları</h2></div></div>
+        <div class="engine-grid">
+          <article><span class="engine-num">01</span><b>Story Engine</b><p>Konu serisi, bölüm konuları, numarasız uzun video konu havuzu ve anlatım metni.</p><small>İÇERİK AKIŞI</small></article>
+          <article><span class="engine-num">02</span><b>Media Intelligence</b><p>Stok kaynak, lisans kaydı, konuşma metni ve zaman kodları.</p><small>ARAŞTIRMA / TRANSKRİPSİYON</small></article>
+          <article><span class="engine-num">03</span><b>Smart Director</b><p>Sunucu, split-screen, PiP, kolaj, stok, infografik ve kinetik yazı seçimi.</p><small>GÖRSEL KARAR MOTORU</small></article>
+          <article><span class="engine-num">04</span><b>Render & Delivery</b><p>FFmpeg ile MP4 üretimi, CapCut teslim paketi ve kalite kontrol.</p><small>MEDYA İŞLEME</small></article>
+        </div>
+      </section>
+    </main>
+    <footer><span>CONTENT FACTORY / STARTER BUILD</span><span>NO RAW VIDEO IN GIT</span></footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
