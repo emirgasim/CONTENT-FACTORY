@@ -159,14 +159,26 @@ async def start_short_render(
     cleanup_old_jobs()
     job_id = uuid.uuid4().hex
     work_dir = Path(tempfile.mkdtemp(prefix="cf-" + job_id[:8] + "-"))
-    source_audio = work_dir / "approved-preview.wav"
+    suffix = Path(audio.filename or "").suffix.lower()
+    allowed_audio_suffixes = {".mp3", ".m4a", ".wav", ".aac", ".mp4", ".mpeg", ".mpga", ".ogg", ".opus", ".webm", ".flac"}
+    if suffix not in allowed_audio_suffixes:
+        suffix = {
+            "audio/mpeg": ".mp3", "audio/mp3": ".mp3",
+            "audio/mp4": ".m4a", "video/mp4": ".m4a",
+            "audio/x-m4a": ".m4a", "audio/wav": ".wav",
+            "audio/x-wav": ".wav", "audio/aac": ".aac",
+            "audio/ogg": ".ogg", "audio/webm": ".webm",
+            "audio/flac": ".flac"
+        }.get((audio.content_type or "").lower(), ".audio")
+    source_audio_name = "approved-preview" + suffix
+    source_audio = work_dir / source_audio_name
     source_audio.write_bytes(audio_bytes)
     now = time.time()
     with JOBS_LOCK:
         JOBS[job_id] = {
             "job_id": job_id, "status": "queued", "progress": 1,
             "message": "İş kuyruğa alındı.", "created_at": now,
-            "updated_at": now, "directory": str(work_dir),
+            "updated_at": now, "directory": str(work_dir), "source_audio": source_audio_name,
             "title": title[:120], "text": script, "error": None,
         }
     POOL.submit(render_short_job, job_id)
@@ -512,7 +524,7 @@ def render_short_job(job_id: str) -> None:
         title = job["title"]
     try:
         update_job(job_id, status="running", progress=8, message="Onaylanan sesin uzun sessizlikleri temizleniyor…")
-        source_audio = work_dir / "approved-preview.wav"
+        source_audio = work_dir / job.get("source_audio", "approved-preview.wav")
         cleaned_audio = work_dir / "cleaned.wav"
         removed = trim_silence(source_audio, cleaned_audio)
         duration = probe_duration(cleaned_audio)
