@@ -1,56 +1,93 @@
-# Content Factory — iPhone-first starter
+# Content Factory
 
-A GitHub-ready Cloudflare Pages starter for a topic-driven Shorts + long-form video workflow.
+GPT sohbetini içerik araştırma ve senaryo merkezi; bu paneli ise medya kabulü ve üretim masası olarak kullanan iPhone-first Shorts / long-form workflow.
 
-## What this version actually does
-- Responsive Turkish control panel.
-- Creates Shorts series/projects and long-video projects.
-- Stores project metadata locally in the browser and exports/imports JSON project files.
-- Lets you select a local video/audio file and inspect browser-readable metadata without uploading it to GitHub.
-- Builds an editable scene/timeline plan with presenter, stock footage, split-screen, picture-in-picture, collage, infographic and kinetic-text scene types.
-- Exports an edit decision list (EDL) as JSON for a future render worker.
-- Includes a Cloudflare Pages health endpoint.
+## GPT-first Shorts workflow
 
-## What it does NOT do yet
-This starter does **not** automatically research the web, download stock footage, transcribe Turkish speech, remove filler/silence, or render a finished MP4. Those require separate services and real-device testing. The UI deliberately does not pretend these functions are complete.
+1. GPT sohbetinde seri, Part ve aynı kategoride tam iki konu hazırlanır.
+2. Her konu için ElevenLabs'e hazır seslendirme metni, görsel/sahne planı, stok kaynak ve lisans notları hazırlanır.
+3. GPT sohbetinden `content-factory-shorts-v1` JSON paketi indirilir.
+4. Panelde Shorts Factory açılır → **GPT paketini içe aktar**.
+5. Her konu için MP3/WAV yüklenir. Alternatif olarak ses içeren video seçilerek tarayıcı destekliyorsa MediaRecorder/captureStream ile ses yakalama denenir.
+6. İki konu ve ses meta verileri ayrı tutulur; üretim paketi JSON olarak dışa aktarılabilir.
 
-## Why no R2 / no raw video in GitHub
-Raw camera footage is never committed to Git. GitHub is used for source code and small project files only. A 15-minute iPhone video remains on the phone until a processing path is configured.
+### Shorts package schema
 
-A static Pages deployment cannot safely receive and process arbitrary multi-GB video by itself. Do not route large video through a normal Pages Function request. The next production phase should use one of:
-1. Local processing on a Mac/PC with FFmpeg (most reliable and no cloud media storage), with the phone transferring the file to that machine.
-2. A separately hosted, authenticated processing worker with temporary disk and resumable upload.
-3. A tested on-device browser processing pipeline, only after iPhone Safari memory/codec/performance tests.
+```json
+{
+  "schema": "content-factory-shorts-v1",
+  "projectName": "Series — Part 1",
+  "series": "Series title",
+  "part": "Part 1",
+  "description": "Short description",
+  "topics": [
+    {
+      "title": "Topic A",
+      "script": "ElevenLabs-ready narration",
+      "duration": "40–45 seconds",
+      "scenes": [
+        {
+          "start": "00:00",
+          "end": "00:05",
+          "layout": "Full-screen presenter",
+          "visual": "Visual description",
+          "source": "Source URL or asset description",
+          "license": "License / reuse notes"
+        }
+      ]
+    },
+    {
+      "title": "Topic B",
+      "script": "Second narration",
+      "duration": "40–45 seconds",
+      "scenes": []
+    }
+  ]
+}
+```
 
-For an iPhone-only workflow, option 2 is the likely practical route, but it needs a compute host and temporary storage. This repository intentionally does not claim GitHub is a video-processing server.
+Download the schema template from inside Shorts Factory. The package must contain exactly two topics.
 
-## Deploy to Cloudflare Pages from GitHub
-1. Create a **private** GitHub repository named `content-factory` under your `emirgasim` account.
-2. Upload the contents of this folder to the repository root (not the parent folder).
-3. In Cloudflare Dashboard, open Workers & Pages → Create → Pages → Connect to Git.
-4. Select `content-factory`.
-5. Framework preset: `None`.
-6. Build command: leave empty.
-7. Build output directory: `public`.
-8. Deploy.
+## Audio handling limitations
 
-No API keys are required for this starter. Do not add secrets until a specific integration is implemented.
+- Uploaded audio/video files remain on the user's device; they are not committed to GitHub and are not uploaded to a cloud media bucket by this frontend.
+- Audio file selection is supported. File metadata is kept in the local project state; browser file bytes are not persisted in localStorage.
+- Video-to-audio extraction uses browser `HTMLMediaElement.captureStream` / `MediaRecorder` when available. Support varies by browser and iOS version; the panel shows a fallback instruction if unsupported. For dependable iPhone fallback, extract audio in CapCut and upload MP3/WAV.
+- Do not assume this frontend can transcribe audio, fetch stock footage, or render MP4.
 
-## Local preview
-Open `public/index.html` in a browser, or serve `public` with any static web server.
+## Long video
 
-## Project model
-Projects are format-agnostic. Each project has:
-- format: `shorts` or `long`
-- topic/series and subtopics
-- narration/script text
-- local media metadata (not media bytes)
-- scenes with timing, layout and visual source notes
-- edit decisions and export settings
+The long-video route accepts a GPT long-form JSON package and lets the user select a local MP4/MOV for metadata inspection. It does not upload or process the large file yet.
 
-## Next production milestones
-- M1: Connect a verified stock-media search provider and record license/source metadata.
-- M2: Add speech-to-text with word/segment timestamps; benchmark Turkish.
-- M3: Implement silence/repetition detection with human approval before destructive cuts.
-- M4: Implement the render engine using FFmpeg and an authenticated resumable upload path.
-- M5: Test 15-minute iPhone MOV/HEVC footage, interrupted upload resume, audio sync, split-screen and final CapCut import.
+## Current implementation status
+
+Implemented:
+- Mobile responsive panel.
+- GPT-first Shorts package import and validation.
+- Two topic cards, separate script display/copy and topic JSON export.
+- Per-topic MP3/WAV selection.
+- Best-effort browser video-audio extraction where supported.
+- JSON export and local project metadata.
+- Long-video package import and local video metadata selection.
+
+Not implemented yet:
+- ChatGPT-to-Cloudflare automatic synchronization.
+- Speech-to-text and word-level timestamps.
+- Stock footage search/download and automated license verification.
+- Automatic scene selection from transcript.
+- FFmpeg render service / MP4 export.
+- Resumable large-file upload and remote processing.
+
+These require separate, tested integrations. No OpenAI/Gemini API key is used by this static frontend.
+
+## Cloudflare Pages
+
+GitHub repository path: `Content-factory/`
+
+Pages build settings:
+- Root directory: `Content-factory`
+- Framework preset: `None`
+- Build command: empty
+- Build output directory: `public`
+
+Raw camera footage must never be committed to GitHub.
