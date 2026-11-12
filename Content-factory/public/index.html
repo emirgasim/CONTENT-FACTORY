@@ -6,7 +6,7 @@
 <body><div class="shell">
 <header class="topbar"><div class="brand"><span class="brand-mark">✳</span><div><b>CONTENT FACTORY</b><small>CREATIVE VIDEO WORKSPACE</small></div></div><div class="top-actions"><span class="status"><i></i> ONE SHORT STUDIO</span><button id="settingsToggle" class="btn btn-ghost">Motor ayarı</button></div></header>
 <main>
-<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Metni ChatGPT'de hazırla. Ses örneğini dinle, onayla ve 9:16 görsel videonu üret.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
+<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Metni ChatGPT'de hazırla. iPhone mikrofonuyla kaydet, ses örneğini dinle ve 9:16 görsel videonu üret.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
 
 <section id="engineSettings" class="panel settings-panel hidden">
 <div class="eyebrow">VOICE / VIDEO ENGINE CONNECTION</div><h3>İşlem motoru bağlantısı</h3>
@@ -29,16 +29,17 @@
 </div>
 
 <div class="panel">
-<div class="step-label"><span>02</span><div><div class="eyebrow">VOICE IDENTITY</div><h3>Kendi ses profilin</h3></div></div>
-<p class="muted">Bir kez temiz referans ses kaydı yükle. Bu iPhone'daki tarayıcıda saklanır ve yeni Shorts'larda yeniden seçilebilir.</p>
-<label class="file-drop compact" for="referenceFile"><span>＋</span><b>Referans sesini seç</b><small>Tercihen 10–30 saniye, tek kişi, temiz kayıt (WAV / MP3 / M4A)</small></label><input id="referenceFile" type="file" accept="audio/*,.wav,.mp3,.m4a" hidden>
-<div class="action-row"><span id="referenceStatus" class="media-info">Ses profili henüz seçilmedi.</span><button id="removeReference" class="btn btn-ghost">Profili sil</button></div>
+<div class="step-label"><span>02</span><div><div class="eyebrow">RECORD YOUR VOICE</div><h3>iPhone mikrofonuyla sesini kaydet</h3></div></div>
+<p class="muted">Dosya seçmene gerek yok. Kaydı doğrudan tarayıcıdan alacağız. Kendi sesin için 15–30 saniye doğal konuş; bu kayıt yalnızca bu Shorts'un seslendirme örneğini üretmekte kullanılacak.</p>
+<div class="record-console"><div class="record-indicator" id="recordIndicator"><span></span><b id="recordState">Kayıt hazır</b><strong id="recordTimer">00:00</strong></div><div class="record-actions"><button id="startRecording" class="btn btn-primary">● Kayda başla</button><button id="stopRecording" class="btn btn-dark" disabled>Kaydı bitir</button><button id="redoRecording" class="btn btn-ghost" disabled>Yeniden kaydet</button></div></div>
+<div id="recordStatus" class="media-info">Mikrofon izni istendiğinde izin ver.</div>
+<audio id="referencePreview" controls class="audio-preview hidden"></audio>
 </div>
 
 <div class="panel">
 <div class="step-label"><span>03</span><div><div class="eyebrow">VOICE PREVIEW</div><h3>Önce seslendirme örneğini dinle</h3></div></div>
-<p class="muted">MOSS-TTS-Nano metni referans sesine göre seslendirir. Beğenmezsen metni değiştirip yeniden örnek oluşturabilirsin. Henüz onaylamadan görsel render başlamaz.</p>
-<button id="generatePreview" class="btn btn-primary btn-wide">Seslendirme örneği oluştur</button>
+<p class="muted">Kendi kaydını referans alan ses örneği hazırlanır. Beğenmezsen metni değiştirip yeniden örnek oluşturabilirsin. Henüz onaylamadan görsel render başlamaz.</p>
+<button id="generatePreview" class="btn btn-primary btn-wide">Kaydımdan ses örneği oluştur</button>
 <div id="previewStatus" class="media-info">Metni ve ses profilini hazırla.</div>
 <audio id="previewAudio" controls class="audio-preview hidden"></audio>
 <div class="action-row"><button id="approveVoice" class="btn btn-dark" disabled>Sesi onayla ve videoyu hazırla</button><button id="regenerateVoice" class="btn btn-ghost" disabled>Yeniden seslendir</button></div>
@@ -57,25 +58,6 @@
 </div>
 </section>
 
-<section class="voice-studio-launch">
-<button id="voiceStudioToggle" class="voice-studio-card">
-<span class="voice-studio-icon">♫</span><span class="voice-studio-copy"><b>VOICE STUDIO</b><small>Ses klonlama · Çoklu ses motoru · Sınırsız yerel üretim*</small><em>AYRI SES ÜRETİM ALANINI AÇ ↗</em></span><span class="voice-studio-arrow">↗</span>
-</button>
-</section>
-<section id="voiceStudioPanel" class="panel voice-studio-panel hidden">
-<div class="section-head"><div><div class="eyebrow">INDEPENDENT VOICE WORKSPACE</div><h2>Voice Studio</h2></div><button id="voiceStudioClose" class="btn btn-ghost">Kapat</button></div>
-<p class="muted">VoiceStudio motoruna bağlanarak metinden ses üret. Kayıtlı ses profillerini listeden seç. İlk bağlantı için VoiceStudio'nun çalışan bir sunucu adresi gerekir; bu bölüm tek başına model çalıştırmaz.</p>
-<label class="field-label" for="vsUrl">VoiceStudio sunucu adresi</label><input id="vsUrl" type="url" placeholder="https://sunucu-adresin">
-<label class="field-label" for="vsToken">API erişim anahtarı <small>(uzak sunucuda gerekiyorsa)</small></label><input id="vsToken" type="password" autocomplete="off" placeholder="OMNIVOICE_API_KEY">
-<div class="action-row"><button id="vsConnect" class="btn btn-primary">Bağlan ve sesleri getir</button><span id="vsStatus" class="media-info">Henüz bağlanılmadı.</span></div>
-<label class="field-label" for="vsVoice">Ses profili</label><select id="vsVoice"><option value="">Önce sunucuya bağlan</option></select>
-<label class="field-label" for="vsModel">Model / motor</label><input id="vsModel" value="tts-1" placeholder="tts-1 veya kurulu motor kimliği">
-<label class="field-label" for="vsText">Seslendirilecek metin</label><textarea id="vsText" rows="7" maxlength="12000" placeholder="Seslendirmek istediğin metni buraya yapıştır..."></textarea>
-<div class="action-row"><button id="vsGenerate" class="btn btn-primary" disabled>Seslendir</button><button id="vsClear" class="btn btn-ghost">Metni temizle</button></div>
-<audio id="vsAudio" class="audio-preview hidden" controls></audio>
-<div class="action-row"><button id="vsDownload" class="btn btn-dark hidden">Ses dosyasını indir</button></div>
-<p class="notice">* Yerel model başına karakter kredisi olmayabilir; ancak sunucu donanımı, elektrik, depolama ve varsa bulut GPU ücretleri devam eder. VoiceStudio'nun model lisansları ayrıca kontrol edilmelidir. Bu modül mevcut MOSS video motorunun yerine geçmez; ayrı ses üretim alanıdır.</p>
-</section>
 <section class="workspace"><div class="section-head"><div><div class="eyebrow">WORKSPACE</div><h2>Son işlemler</h2></div></div><div id="history" class="history"><div class="empty"><div class="empty-icon">✳</div><b>Henüz işlem yok</b><span>İlk Shorts'unu hazırladığında burada görünecek.</span></div></div></section>
 <section class="engines"><div class="section-head"><div><div class="eyebrow">PRODUCTION ENGINES</div><h2>Üretim motorları</h2></div></div><div class="engine-grid"><article><span class="engine-num">01</span><b>MOSS Voice Studio</b><p>Türkçe ses üretimi ve referans sesle klonlama önizlemesi.</p><small>TEXT TO SPEECH</small></article><article><span class="engine-num">02</span><b>Audio Cleaner</b><p>Onaylanan sesteki uzun sessizlikleri ve beklemeleri azaltır.</p><small>AUTO TRIM</small></article><article><span class="engine-num">03</span><b>Smart Director</b><p>Konuşma zaman kodlarına göre lisans bilgili stok görsel ve canlı grafik sahneleri seçer.</p><small>VISUAL STORYTELLING</small></article><article><span class="engine-num">04</span><b>Video Render</b><p>9:16 MP4 üretir; CapCut'ta kendi kamera görüntülerini ekleyebilirsin.</p><small>MP4 DELIVERY</small></article></div></section>
 </main>
