@@ -68,3 +68,8 @@
  .hero-sticker strong{font-size:21px}.hero-sticker span,.hero-sticker small{font-size:7px}
  .panel{padding:15px}.mode-grid{grid-template-columns:1fr}.mode-card{min-height:150px}
 }
+/* Visual-search and scene render feedback */
+#visualStatus{font-size:12px;line-height:1.55}
+#renderStats{white-space:normal;line-height:1.65}
+#renderPanel .progress-track{height:12px}
+#renderPanel .progress-fill{transition:width .25s ease}
