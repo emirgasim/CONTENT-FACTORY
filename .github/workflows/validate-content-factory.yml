@@ -23,6 +23,10 @@ jobs:
           node-version: "22"
       - name: Check frontend JavaScript
         run: node --check Content-factory/public/app.js
+      - name: Check Cloudflare Pages Function syntax
+        run: |
+          node --input-type=module --check < Content-factory/functions/api/agent/registry.js
+          node --input-type=module --check < Content-factory/functions/api/agent/run.js
       - name: Check Python engine syntax
         run: python -m py_compile Content-factory/voice-engine/gateway.py
       - name: Check required application files
