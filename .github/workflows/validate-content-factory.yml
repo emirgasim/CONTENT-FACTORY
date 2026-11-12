@@ -6,6 +6,7 @@ on:
     paths:
       - "Content-factory/**"
       - ".github/workflows/validate-content-factory.yml"
+      - ".github/workflows/shorts-background.yml"
   pull_request:
     paths:
       - "Content-factory/**"
@@ -33,7 +34,7 @@ jobs:
           node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId].js'
           node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId]/[asset].js'
       - name: Check Python engine syntax
-        run: python -m py_compile Content-factory/voice-engine/gateway.py
+        run: python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py
       - name: Check required application files
         run: |
           test -s Content-factory/public/index.html
