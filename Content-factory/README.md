@@ -24,7 +24,7 @@ The Python media engine cannot run inside Cloudflare Pages. Deploy `voice-engine
 
 ## Voice engine deployment
 
-See [voice-engine/README.md](voice-engine/README.md). The uploaded MOSS source ZIP contains source code, not model weights. The Docker image downloads the official ONNX TTS and audio-tokenizer weights on first startup from Hugging Face.
+See [voice-engine/README.md](voice-engine/README.md). Create a Hugging Face Docker Space once, then add `HF_TOKEN` and `HF_SPACE_ID` as GitHub Actions secrets. The included workflow automatically pushes the engine folder to that Space when its code changes. The uploaded MOSS source ZIP contains source code, not model weights; the Docker image downloads the official ONNX TTS and audio-tokenizer weights on first startup from Hugging Face.
 
 ## Implemented frontend
 
