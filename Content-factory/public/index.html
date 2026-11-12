@@ -57,6 +57,25 @@
 </div>
 </section>
 
+<section class="voice-studio-launch">
+<button id="voiceStudioToggle" class="voice-studio-card">
+<span class="voice-studio-icon">♫</span><span class="voice-studio-copy"><b>VOICE STUDIO</b><small>Ses klonlama · Çoklu ses motoru · Sınırsız yerel üretim*</small><em>AYRI SES ÜRETİM ALANINI AÇ ↗</em></span><span class="voice-studio-arrow">↗</span>
+</button>
+</section>
+<section id="voiceStudioPanel" class="panel voice-studio-panel hidden">
+<div class="section-head"><div><div class="eyebrow">INDEPENDENT VOICE WORKSPACE</div><h2>Voice Studio</h2></div><button id="voiceStudioClose" class="btn btn-ghost">Kapat</button></div>
+<p class="muted">VoiceStudio motoruna bağlanarak metinden ses üret. Kayıtlı ses profillerini listeden seç. İlk bağlantı için VoiceStudio'nun çalışan bir sunucu adresi gerekir; bu bölüm tek başına model çalıştırmaz.</p>
+<label class="field-label" for="vsUrl">VoiceStudio sunucu adresi</label><input id="vsUrl" type="url" placeholder="https://sunucu-adresin">
+<label class="field-label" for="vsToken">API erişim anahtarı <small>(uzak sunucuda gerekiyorsa)</small></label><input id="vsToken" type="password" autocomplete="off" placeholder="OMNIVOICE_API_KEY">
+<div class="action-row"><button id="vsConnect" class="btn btn-primary">Bağlan ve sesleri getir</button><span id="vsStatus" class="media-info">Henüz bağlanılmadı.</span></div>
+<label class="field-label" for="vsVoice">Ses profili</label><select id="vsVoice"><option value="">Önce sunucuya bağlan</option></select>
+<label class="field-label" for="vsModel">Model / motor</label><input id="vsModel" value="tts-1" placeholder="tts-1 veya kurulu motor kimliği">
+<label class="field-label" for="vsText">Seslendirilecek metin</label><textarea id="vsText" rows="7" maxlength="12000" placeholder="Seslendirmek istediğin metni buraya yapıştır..."></textarea>
+<div class="action-row"><button id="vsGenerate" class="btn btn-primary" disabled>Seslendir</button><button id="vsClear" class="btn btn-ghost">Metni temizle</button></div>
+<audio id="vsAudio" class="audio-preview hidden" controls></audio>
+<div class="action-row"><button id="vsDownload" class="btn btn-dark hidden">Ses dosyasını indir</button></div>
+<p class="notice">* Yerel model başına karakter kredisi olmayabilir; ancak sunucu donanımı, elektrik, depolama ve varsa bulut GPU ücretleri devam eder. VoiceStudio'nun model lisansları ayrıca kontrol edilmelidir. Bu modül mevcut MOSS video motorunun yerine geçmez; ayrı ses üretim alanıdır.</p>
+</section>
 <section class="workspace"><div class="section-head"><div><div class="eyebrow">WORKSPACE</div><h2>Son işlemler</h2></div></div><div id="history" class="history"><div class="empty"><div class="empty-icon">✳</div><b>Henüz işlem yok</b><span>İlk Shorts'unu hazırladığında burada görünecek.</span></div></div></section>
 <section class="engines"><div class="section-head"><div><div class="eyebrow">PRODUCTION ENGINES</div><h2>Üretim motorları</h2></div></div><div class="engine-grid"><article><span class="engine-num">01</span><b>MOSS Voice Studio</b><p>Türkçe ses üretimi ve referans sesle klonlama önizlemesi.</p><small>TEXT TO SPEECH</small></article><article><span class="engine-num">02</span><b>Audio Cleaner</b><p>Onaylanan sesteki uzun sessizlikleri ve beklemeleri azaltır.</p><small>AUTO TRIM</small></article><article><span class="engine-num">03</span><b>Smart Director</b><p>Konuşma zaman kodlarına göre lisans bilgili stok görsel ve canlı grafik sahneleri seçer.</p><small>VISUAL STORYTELLING</small></article><article><span class="engine-num">04</span><b>Video Render</b><p>9:16 MP4 üretir; CapCut'ta kendi kamera görüntülerini ekleyebilirsin.</p><small>MP4 DELIVERY</small></article></div></section>
 </main>
