@@ -126,7 +126,7 @@ async function searchCommons(query){
    const info=page.imageinfo?.[0],meta=info?.extmetadata||{},license=metaValue(meta,"LicenseShortName");
    if(!info||!permittedLicense(license)||!/^image\/(jpeg|png|webp)$/i.test(info.thumbmime||info.mime||""))continue;
    const url=info.thumburl||info.url;if(!url)continue;
-   if(info.width&&info.width<700)continue;
+   if((info.width&&info.width<700)||(info.height&&info.height<500))continue;
    items.push({
     title:String(page.title||"Wikimedia image"),url,pageUrl:"https://commons.wikimedia.org/wiki/"+encodeURIComponent(String(page.title||"").replace(/ /g,"_")),
     author:metaValue(meta,"Artist")||metaValue(meta,"Credit")||"Belirtilmemiş",
@@ -146,7 +146,7 @@ function loadImage(item){
  });
 }
 async function searchSceneAssets(timeline,title,ownImages){
- const assets=new Array(timeline.length).fill(null),credits=[];
+ const assets=new Array(timeline.length).fill(null),credits=[],usedUrls=new Set();
  const jobs=timeline.map((scene,i)=>({scene,i,query:extractSearchTerms(scene.caption,title)}));
  let cursor=0;
  const workers=Array.from({length:3},async()=>{
@@ -155,8 +155,9 @@ async function searchSceneAssets(timeline,title,ownImages){
    try{
     const results=await searchCommons(job.query);
     let loaded=null;
-    for(const item of results.slice(0,4)){
-     try{loaded=await loadImage(item);break;}catch{}
+    for(const item of results.slice(0,8)){
+     if(usedUrls.has(item.url))continue;
+     try{loaded=await loadImage(item);usedUrls.add(item.url);break;}catch{}
     }
     if(loaded){assets[job.i]=loaded;credits.push(loaded);}
     else if(ownImages.length){const fallback=ownImages[job.i%ownImages.length];assets[job.i]=fallback;}
