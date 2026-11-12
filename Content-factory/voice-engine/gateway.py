@@ -264,42 +264,35 @@ def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
     return rows
 
 
-def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float = 5.5) -> list[dict[str, Any]]:
-    if not rows:
-        return []
+def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float | None = None) -> list[dict[str, Any]]:
+    """Create one visual beat per transcript sentence/utterance; no fixed scene-count or seconds cap."""
     groups: list[dict[str, Any]] = []
-    current = None
     for row in rows:
-        if current is None:
-            current = {"start": float(row["start"]), "end": float(row["end"]), "text": row["text"]}
-        else:
-            span = float(row["end"]) - current["start"]
-            if span >= target_seconds and len(groups) < 8:
-                groups.append(current)
-                current = {"start": float(row["start"]), "end": float(row["end"]), "text": row["text"]}
-            else:
-                current["end"] = float(row["end"])
-                current["text"] += " " + row["text"]
-    if current:
-        groups.append(current)
-    if len(groups) > 8:
-        merged = []
-        for i in range(0, len(groups), 2):
-            pair = groups[i:i + 2]
-            merged.append({
-                "start": pair[0]["start"], "end": pair[-1]["end"],
-                "text": " ".join(x["text"] for x in pair)
-            })
-        groups = merged[:8]
+        text = re.sub(r"\s+", " ", str(row.get("text", "")).strip())
+        start = max(0.0, float(row.get("start", 0.0)))
+        end = min(duration, max(start + 0.05, float(row.get("end", start + 0.5))))
+        if not text:
+            continue
+        parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+        if not parts:
+            parts = [text]
+        weights = [max(1, len(part.split())) for part in parts]
+        total = sum(weights)
+        cursor = start
+        span = max(0.05, end - start)
+        for index, (part, weight) in enumerate(zip(parts, weights)):
+            part_end = end if index == len(parts) - 1 else cursor + span * weight / total
+            groups.append({"start": cursor, "end": part_end, "text": part})
+            cursor = part_end
     if not groups:
         return fallback_segments("", duration)
     groups[0]["start"] = 0.0
     groups[-1]["end"] = duration
-    for i in range(1, len(groups)):
-        groups[i]["start"] = max(groups[i]["start"], groups[i - 1]["start"])
-    for group in groups:
+    for index, group in enumerate(groups):
         group["start"] = max(0.0, min(duration, float(group["start"])))
-        group["end"] = max(group["start"] + 0.5, min(duration, float(group["end"])))
+        group["end"] = max(group["start"] + 0.05, min(duration, float(group["end"])))
+        if index:
+            group["start"] = max(group["start"], groups[index - 1]["end"] - 0.04)
     return groups
 
 
@@ -308,21 +301,22 @@ def plain_text(value: Any) -> str:
 
 
 def license_allowed(label: str) -> bool:
-    value = (label or "").lower()
-    if any(x in value for x in ("noncommercial", "non-commercial", "nc-", "no derivatives", "no-derivatives", "nd")):
+    value = (label or "").strip().lower().replace("_", "-")
+    if any(x in value for x in ("noncommercial", "non-commercial", "by-nc", "cc-by-nc", "no derivatives", "no-derivatives", "by-nd", "cc-by-nd")):
         return False
-    return ("cc0" in value or "public domain" in value or "public-domain" in value
-            or "cc by" in value or "cc-by" in value or "cc by-sa" in value or "cc-by-sa" in value)
+    return value in {"cc0", "cc-zero", "pdm", "public domain", "public-domain", "by", "by-sa", "cc-by", "cc-by-sa"} or any(
+        x in value for x in ("cc0", "public domain", "public-domain", "cc by", "cc-by", "creative commons attribution")
+    )
 
 
-def search_commons(query: str, limit: int = 10) -> list[dict[str, str]]:
+def search_commons(query: str, limit: int = 20) -> list[dict[str, str]]:
     params = {
         "action": "query", "format": "json", "generator": "search",
-        "gsrsearch": query, "gsrnamespace": "6", "gsrlimit": str(limit),
+        "gsrsearch": query, "gsrnamespace": "6", "gsrlimit": str(min(50, limit)),
         "prop": "imageinfo", "iiprop": "url|extmetadata", "iiurlwidth": "1400",
     }
     try:
-        response = requests.get(COMMONS_API, params=params, headers={"User-Agent": USER_AGENT}, timeout=20)
+        response = requests.get(COMMONS_API, params=params, headers={"User-Agent": USER_AGENT}, timeout=25)
         response.raise_for_status()
         data = response.json().get("query", {}).get("pages", {})
     except Exception:
@@ -352,8 +346,104 @@ def search_commons(query: str, limit: int = 10) -> list[dict[str, str]]:
             "license_url": plain_text((meta.get("LicenseUrl") or {}).get("value")),
             "credit": plain_text((meta.get("Credit") or {}).get("value")),
             "mime": mime,
+            "source": "Wikimedia Commons",
         })
     return items
+
+
+def search_openverse(query: str, limit: int = 20) -> list[dict[str, str]]:
+    params = {"q": query, "page_size": str(min(30, limit)), "license": "cc0,pdm,by,by-sa"}
+    try:
+        response = requests.get(
+            "https://api.openverse.org/v1/images/",
+            params=params,
+            headers={"User-Agent": USER_AGENT},
+            timeout=25,
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+    except Exception:
+        return []
+    items = []
+    for item in results:
+        license_name = str(item.get("license") or "").lower()
+        if not license_allowed(license_name):
+            continue
+        image_url = item.get("thumbnail") or item.get("url")
+        page_url = item.get("foreign_landing_url") or item.get("detail_url")
+        if not image_url or not page_url:
+            continue
+        if int(item.get("width") or 0) < 500 or int(item.get("height") or 0) < 400:
+            continue
+        items.append({
+            "title": plain_text(item.get("title") or "Openverse image"),
+            "url": str(image_url),
+            "page_url": str(page_url),
+            "author": plain_text(item.get("creator") or "Not specified"),
+            "license": license_name.upper(),
+            "license_url": str(item.get("license_url") or ""),
+            "credit": "",
+            "mime": "image/unknown",
+            "source": "Openverse / " + str(item.get("source") or "open collection"),
+        })
+    return items
+
+
+def search_library_of_congress(query: str, limit: int = 20) -> list[dict[str, str]]:
+    try:
+        response = requests.get(
+            "https://www.loc.gov/search/",
+            params={"fo": "json", "q": query, "c": str(min(30, limit)), "sp": "1"},
+            headers={"User-Agent": USER_AGENT},
+            timeout=25,
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+    except Exception:
+        return []
+    items = []
+    for item in results:
+        rights = item.get("rights") or ""
+        if isinstance(rights, list):
+            rights = " ".join(str(x) for x in rights)
+        rights_text = plain_text(rights)
+        if not re.search(r"public domain|no known restrictions|no known copyright restrictions|unrestricted", rights_text, re.I):
+            continue
+        image_urls = item.get("image_url") or []
+        if isinstance(image_urls, str):
+            image_urls = [image_urls]
+        image_url = next((u for u in image_urls if re.search(r"\.(jpe?g|png|webp)(?:$|\?)", str(u), re.I)), None)
+        if not image_url:
+            continue
+        items.append({
+            "title": plain_text(item.get("title") or "Library of Congress image"),
+            "url": str(image_url),
+            "page_url": str(item.get("id") or item.get("url") or ""),
+            "author": plain_text(item.get("contributor") or "Library of Congress"),
+            "license": "Public domain / no known restrictions",
+            "license_url": "https://www.loc.gov/legal/",
+            "credit": "",
+            "mime": "image/unknown",
+            "source": "Library of Congress",
+        })
+    return items
+
+
+def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
+    """Search multiple public no-key catalogs; never assume every indexed image is reusable."""
+    results = []
+    seen = set()
+    providers = (search_commons, search_openverse, search_library_of_congress)
+    per_provider = max(5, min(20, limit // len(providers)))
+    for provider in providers:
+        for item in provider(query, limit=per_provider):
+            url = item.get("url", "")
+            if url and url not in seen:
+                seen.add(url)
+                results.append(item)
+                if len(results) >= limit:
+                    return results
+    return results
 
 
 def extract_keywords(text: str) -> str:
@@ -548,17 +638,30 @@ def render_short_job(job_id: str) -> None:
         update_job(job_id, progress=38, message="Wikimedia Commons stok görselleri lisanslarıyla aranıyor…")
         source_records: list[dict[str, str]] = []
         scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
+        user_images: list[Path] = []
+        for name in job.get("user_images", []):
+            path = work_dir / Path(name).name
+            if path.is_file():
+                try:
+                    with Image.open(path) as image:
+                        image.verify()
+                    user_images.append(path)
+                except Exception:
+                    pass
         for idx, group in enumerate(groups):
             query = extract_keywords(group["text"])
-            candidates = search_commons(query, limit=10)
+            candidates = search_public_assets(query, limit=30)
             chosen: list[tuple[Path, dict[str, str]]] = []
             for candidate in candidates:
                 asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
                 if asset_path:
                     chosen.append((asset_path, candidate))
                     source_records.append(candidate)
-                if len(chosen) >= 2:
                     break
+            if not chosen and user_images:
+                own_path = user_images[idx % len(user_images)]
+                chosen.append((own_path, {"title": own_path.name, "author": "User supplied", "license": "User supplied; verify your own rights", "license_url": "", "page_url": "", "source": "User upload"}))
+                source_records.append(chosen[0][1])
             scene_assets.append(chosen)
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
             update_job(job_id, progress=progress, message="Görseller ve lisanslar seçiliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
@@ -618,7 +721,7 @@ def render_short_job(job_id: str) -> None:
             "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
             "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
             "",
-            "Not: Görseller Wikimedia Commons üzerinden aranır. Her varlığın kendi lisans koşulları yukarıda listelenir.",
+            "Not: Görseller Wikimedia Commons, Openverse ve Library of Congress gibi kamuya açık koleksiyonlardan aranır. Her varlığın kendi lisans koşulları yukarıda listelenir.",
         ])
         (work_dir / "sources-and-licenses.txt").write_text("\n".join(credits), encoding="utf-8")
         update_job(
