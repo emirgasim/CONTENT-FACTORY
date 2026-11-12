@@ -28,3 +28,6 @@
 
 /* Focused Shorts-only workspace */
 .mode-grid{grid-template-columns:1fr}.mode-card{width:100%}
+
+.agent-hub{margin:28px 0}.agent-skills{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:16px 0}.agent-skill{border:1px solid var(--line);background:#11131c;color:var(--text);padding:10px;border-radius:8px;text-align:left;font:600 11px Manrope}.agent-skill:active{border-color:var(--yellow)}.agent-tools{border-top:1px solid var(--line);padding-top:16px}.agent-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;background:#0c0d13;border:1px solid var(--line);padding:14px;border-radius:9px;color:#b9f4d2;font:11px/1.6 ui-monospace,monospace}.agent-hub .section-head{margin-bottom:8px}
+@media(max-width:760px){.agent-skills{grid-template-columns:repeat(2,minmax(0,1fr))}}
