@@ -73,3 +73,8 @@
 #renderStats{white-space:normal;line-height:1.65}
 #renderPanel .progress-track{height:12px}
 #renderPanel .progress-fill{transition:width .25s ease}
+
+/* Background-render status and cleanup controls */
+#deleteCloudProject{margin-top:12px;background:#D8FF48;color:#101018}
+#renderCleanupStatus{margin-top:12px;font-size:12px;line-height:1.5}
+#renderStatus{white-space:normal;line-height:1.55}
