@@ -434,7 +434,7 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
     return y
 
 
-def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str) -> None:
+def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
     width, height = 1080, 1920
     color = PALETTE[index % len(PALETTE)]
     text = (group.get("text") or title or "Bilinmeyen gerçekler").strip()
@@ -499,6 +499,11 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         draw_wrapped(draw, text, load_font(76), 65, 1320, 950, "#151515", 5)
         draw.rounded_rectangle((60, 1770, 700, 1870), radius=35, fill="#151515")
         draw.text((100, 1797), "BİLGİ · MERAK · KEŞİF", font=small_font, fill="white")
+    if hook:
+        banner = PALETTE[(index + 2) % len(PALETTE)]
+        draw = ImageDraw.Draw(canvas)
+        draw.rectangle((0, 0, width, 145), fill=banner)
+        draw_wrapped(draw, hook, load_font(54), 48, 28, 980, "#101018", 2)
     canvas.save(output, quality=92)
 
 
@@ -522,6 +527,7 @@ def render_short_job(job_id: str) -> None:
         work_dir = Path(job["directory"])
         script = job["text"]
         title = job["title"]
+        hook = job.get("hook", "")
     try:
         update_job(job_id, status="running", progress=8, message="Onaylanan sesin uzun sessizlikleri temizleniyor…")
         source_audio = work_dir / job.get("source_audio", "approved-preview.wav")
@@ -568,7 +574,7 @@ def render_short_job(job_id: str) -> None:
             cursor += scene_duration
             canvas_path = work_dir / ("scene-" + str(idx + 1) + ".jpg")
             clip_path = work_dir / ("clip-" + str(idx + 1) + ".mp4")
-            create_visual_canvas(group, scene_assets[idx], idx, canvas_path, title)
+            create_visual_canvas(group, scene_assets[idx], idx, canvas_path, title, hook)
             render_one_scene(canvas_path, scene_duration, clip_path)
             clips.append(clip_path)
             update_job(job_id, progress=70 + int(20 * (idx + 1) / max(1, len(groups))), message="Sahneler birleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
