@@ -149,11 +149,26 @@ function auditSceneContrast(styles){
 }
 
 function extractSearchTerms(text,title){
- const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\p{L}\p{N}]{3,}/gu)||[];
- const aliases={"oyun":"video game arcade","oyuncu":"video game","harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth","uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog","bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned","ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes","minecraft":"voxel game","pacman":"arcade game"};
- const seen=new Set(),selected=[],translated=[];
- for(const word of words){if(STOP.has(word)||seen.has(word))continue;seen.add(word);selected.push(word);if(aliases[word])translated.push(aliases[word]);if(selected.length>=6)break;}
- return [...translated,...selected.slice(0,4)].join(" ")||title||text.slice(0,60);
+ const aliases={
+  "oyun":"video game arcade","menü":"video game menu","menu":"video game menu","minecraft":"Minecraft voxel game","pacman":"Pac-Man arcade maze",
+  "harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth planet",
+  "uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog",
+  "bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned",
+  "ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes",
+  "manzara":"landscape scenery","şehir":"city skyline","köprü":"bridge","uçak":"airplane","araba":"car",
+  "okul":"school","çizgi":"cartoon animation","oyuncak":"toy","fabrika":"factory","telefon":"mobile phone",
+  "internet":"internet technology","robot":"robot","korku":"horror","canavar":"monster","hayalet":"ghost",
+  "göz":"eye closeup","kalp":"heart anatomy","beyin":"human brain","deney":"science experiment",
+  "ilaç":"medicine","yasak":"banned","ürün":"consumer product","spor":"sport","futbol":"football soccer"
+ };
+ const tokens=value=>String(value||"").toLocaleLowerCase("tr-TR").match(/[\p{L}\p{N}]{3,}/gu)||[];
+ const topicTokens=tokens(title).filter(x=>!STOP.has(x));
+ const sceneTokens=tokens(text).filter(x=>!STOP.has(x));
+ const topic=[],scene=[];
+ for(const word of topicTokens){if(aliases[word]&&!topic.includes(aliases[word]))topic.push(aliases[word]);if(!topic.includes(word))topic.push(word);}
+ for(const word of sceneTokens){if(aliases[word]&&!scene.includes(aliases[word]))scene.push(aliases[word]);if(!scene.includes(word))scene.push(word);}
+ const query=[...topic.slice(0,5),...scene.slice(0,5)].join(" ");
+ return query.slice(0,180)||String(title||text).slice(0,100);
 }
 function permittedLicense(label){
  const s=String(label||"").toLowerCase();
