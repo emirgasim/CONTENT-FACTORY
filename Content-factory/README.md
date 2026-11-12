@@ -1,93 +1,34 @@
-# Content Factory
+# Content Factory — Single-topic Shorts workflow
 
-GPT sohbetini içerik araştırma ve senaryo merkezi; bu paneli ise medya kabulü ve üretim masası olarak kullanan iPhone-first Shorts / long-form workflow.
+Konu araştırması ve seslendirme metni GPT sohbetinde hazırlanır. Panel her seferinde tek konu ve tek hazır ses dosyası alır.
 
-## GPT-first Shorts workflow
+## Shorts flow
+1. GPT sohbetinde konu araştırmasını ve seslendirme metnini hazırla.
+2. Panelde Shorts Factory → yeni konu.
+3. İsteğe bağlı konu başlığını gir, seslendirme metnini yapıştır.
+4. O konuya ait MP3/WAV dosyasını yükle.
+5. Sessizlik temizleme eşiğini, minimum duraklamayı ve korunacak payı ayarla.
+6. Önizlemeyi dinle; temizlenmiş WAV'ı ve konu JSON'unu indir.
+7. "Yeni konuya geç" ile ikinci konuya geç. İki videoyu son aşamada CapCut'ta birleştir.
 
-1. GPT sohbetinde seri, Part ve aynı kategoride tam iki konu hazırlanır.
-2. Her konu için ElevenLabs'e hazır seslendirme metni, görsel/sahne planı, stok kaynak ve lisans notları hazırlanır.
-3. GPT sohbetinden `content-factory-shorts-v1` JSON paketi indirilir.
-4. Panelde Shorts Factory açılır → **GPT paketini içe aktar**.
-5. Her konu için MP3/WAV yüklenir. Alternatif olarak ses içeren video seçilerek tarayıcı destekliyorsa MediaRecorder/captureStream ile ses yakalama denenir.
-6. İki konu ve ses meta verileri ayrı tutulur; üretim paketi JSON olarak dışa aktarılabilir.
+## Audio silence trimming
+- Decodes supported audio files locally with Web Audio API.
+- Measures 20ms RMS windows and groups speech-active ranges.
+- Removes gaps longer than the selected minimum pause, retaining configurable audio padding around speech.
+- Exports a 16-bit PCM WAV file.
+- Does not upload audio to GitHub, Cloudflare R2, or any remote endpoint.
+- Breath sounds can overlap speech and cannot be reliably identified as breaths using simple silence detection. Low-level breaths may be trimmed depending on threshold. Always listen to the preview before using the result.
+- Browser/iOS codec and memory support varies. If an audio file cannot be decoded on iPhone, export WAV from ElevenLabs or use another supported format.
+- Audio bytes are only held in the current browser session; project metadata and narration text are saved locally. Re-select the audio file after refreshing the page.
 
-### Shorts package schema
-
-```json
-{
-  "schema": "content-factory-shorts-v1",
-  "projectName": "Series — Part 1",
-  "series": "Series title",
-  "part": "Part 1",
-  "description": "Short description",
-  "topics": [
-    {
-      "title": "Topic A",
-      "script": "ElevenLabs-ready narration",
-      "duration": "40–45 seconds",
-      "scenes": [
-        {
-          "start": "00:00",
-          "end": "00:05",
-          "layout": "Full-screen presenter",
-          "visual": "Visual description",
-          "source": "Source URL or asset description",
-          "license": "License / reuse notes"
-        }
-      ]
-    },
-    {
-      "title": "Topic B",
-      "script": "Second narration",
-      "duration": "40–45 seconds",
-      "scenes": []
-    }
-  ]
-}
-```
-
-Download the schema template from inside Shorts Factory. The package must contain exactly two topics.
-
-## Audio handling limitations
-
-- Uploaded audio/video files remain on the user's device; they are not committed to GitHub and are not uploaded to a cloud media bucket by this frontend.
-- Audio file selection is supported. File metadata is kept in the local project state; browser file bytes are not persisted in localStorage.
-- Video-to-audio extraction uses browser `HTMLMediaElement.captureStream` / `MediaRecorder` when available. Support varies by browser and iOS version; the panel shows a fallback instruction if unsupported. For dependable iPhone fallback, extract audio in CapCut and upload MP3/WAV.
-- Do not assume this frontend can transcribe audio, fetch stock footage, or render MP4.
-
-## Long video
-
-The long-video route accepts a GPT long-form JSON package and lets the user select a local MP4/MOV for metadata inspection. It does not upload or process the large file yet.
-
-## Current implementation status
-
-Implemented:
-- Mobile responsive panel.
-- GPT-first Shorts package import and validation.
-- Two topic cards, separate script display/copy and topic JSON export.
-- Per-topic MP3/WAV selection.
-- Best-effort browser video-audio extraction where supported.
-- JSON export and local project metadata.
-- Long-video package import and local video metadata selection.
-
-Not implemented yet:
-- ChatGPT-to-Cloudflare automatic synchronization.
-- Speech-to-text and word-level timestamps.
-- Stock footage search/download and automated license verification.
-- Automatic scene selection from transcript.
-- FFmpeg render service / MP4 export.
-- Resumable large-file upload and remote processing.
-
-These require separate, tested integrations. No OpenAI/Gemini API key is used by this static frontend.
+## Long-video route
+This build keeps the long-video entry as a preparation placeholder. Large file transfer, transcript timing, automatic edit decisions and final MP4 rendering are not implemented yet.
 
 ## Cloudflare Pages
-
-GitHub repository path: `Content-factory/`
-
-Pages build settings:
-- Root directory: `Content-factory`
-- Framework preset: `None`
+Repository subdirectory: Content-factory/
+- Root directory: Content-factory
+- Framework: None
 - Build command: empty
-- Build output directory: `public`
+- Build output directory: public
 
 Raw camera footage must never be committed to GitHub.
