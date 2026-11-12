@@ -114,7 +114,7 @@ async function searchCommons(query){
  const params=new URLSearchParams({
   action:"query",format:"json",origin:"*",generator:"search",gsrsearch:query,
   gsrnamespace:"6",gsrlimit:"8",prop:"imageinfo",
-  iiprop:"url|extmetadata",iiurlwidth:"1200"
+  iiprop:"url|extmetadata|thumbmime",iiurlwidth:"1200"
  });
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),14000);
  try{
