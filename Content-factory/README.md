@@ -1,78 +1,59 @@
 # Content Factory
 
-iPhone-first Shorts / long-form workflow. GPT sohbeti konu araştırması ve senaryoyu hazırlar; Content Factory tek bir Shorts konusunun sesini ve görsel MP4 çıktısını yönetir.
+iPhone-first Shorts workflow. GPT sohbeti konu araştırmasını ve 40–45 saniyelik seslendirme metnini hazırlar. Kullanıcı metni panelde yapıştırır, iPhone mikrofonuyla doğrudan anlatımı kaydeder, kaydı dinleyip onaylar ve video render işini başlatır.
 
 ## Current Shorts workflow
 
-1. GPT sohbetinde konuyu ve 40–45 saniyelik ElevenLabs/MOSS uyumlu seslendirme metnini hazırla.
-2. Panelde **Shorts Factory** aç; yalnızca tek konunun metnini yapıştır.
-3. Kendi sesinden 10–30 saniyelik temiz referans kaydını bir kez yükle. Dosya cihazın IndexedDB alanında saklanır.
-4. **Seslendirme örneği oluştur** ile MOSS-TTS-Nano ses önizlemesini üret ve dinle.
-5. Beğenince **Sesi onayla ve videoyu hazırla** düğmesine bas.
-6. Engine uzun sessizlikleri kısaltır, Türkçe konuşmayı zaman kodlarına ayırır, Wikimedia Commons'tan uygun lisanslı görseller arar ve 9:16 MP4 render eder.
-7. MP4, temizlenmiş WAV ve kaynak/lisans dökümünü indir.
-8. İkinci konu için yeni Shorts başlat; iki sonucu CapCut'ta kendi kamera kliplerinle birleştir.
+1. GPT sohbetinde tek konu için yaklaşık 40–45 saniyelik metni hazırla.
+2. Panelde **Shorts Factory** aç ve metni yapıştır.
+3. **Kayda başla** ile iPhone mikrofonundan metni oku; **Kaydı bitir** ile durdur.
+4. Kaydı sayfa içindeki oynatıcıdan dinle. Gerekirse yeniden kaydet.
+5. **Kaydımı dinle** önizlemesini aç ve **Sesi onayla ve videoyu hazırla** düğmesine bas.
+6. Kayıt doğrudan render motoruna gönderilir. Motor uzun sessizlikleri azaltır, konuşmayı analiz eder, görsel sahneler hazırlar ve 9:16 MP4 üretir.
+7. MP4 ve varsa temizlenmiş ses/kaynak dökümünü indir.
+8. İkinci konu için yeni Shorts başlat; CapCut'ta kendi yüz kliplerinle birleştir.
 
-## Architecture
+## Microphone recording
 
-- GitHub: source code and documentation.
-- Cloudflare Pages: static iPhone-friendly website.
-- `voice-engine/`: separate Python Docker service that runs MOSS-TTS-Nano ONNX, FFmpeg, Whisper transcription, Wikimedia Commons media search and MP4 rendering.
-- Raw recordings and generated files are not committed to GitHub and are not stored in R2 by this frontend.
+- Uses browser `getUserMedia({audio})` and `MediaRecorder`; no file picker or separate audio upload is needed.
+- Requires HTTPS and explicit microphone permission. On iPhone, use Safari and allow microphone access when prompted.
+- Supported recording MIME type is selected from audio/mp4 or WebM variants exposed by the browser. Actual support varies by iOS/Safari version.
+- The recorded narration is held in page memory and sent to the configured render engine only after user approval. It is not stored in GitHub or localStorage.
+- Refreshing or closing the page discards the unsent recording. Keep the page open until render has completed.
+- The user is recording the actual narration; this workflow does not synthesize cloned speech or need a reference audio upload.
 
-The Python media engine cannot run inside Cloudflare Pages. Deploy `voice-engine/` as a separate Docker service (for example a Hugging Face Docker Space) or run it on a suitable computer. The website requires its URL and shared token under **Motor ayarı**.
+## Architecture and deployment
 
-## Voice engine deployment
+- GitHub stores source code only.
+- Cloudflare Pages hosts the static web UI.
+- Python engine in `voice-engine/` must run separately and be reachable over HTTPS. It cannot run inside Cloudflare Pages.
+- Website → **Motor ayarı**: enter engine URL and the same `FACTORY_API_TOKEN` configured on the engine.
+- The frontend expects:
+  - `GET /health`
+  - `POST /api/shorts/render` multipart fields `text`, `title`, `audio`
+  - `GET /api/jobs/{job_id}`
+  - `GET /api/jobs/{job_id}/video`
+  - `GET /api/jobs/{job_id}/audio`
+  - `GET /api/jobs/{job_id}/credits`
 
-See [voice-engine/README.md](voice-engine/README.md). Create a Hugging Face Docker Space once, then add `HF_TOKEN` and `HF_SPACE_ID` as GitHub Actions secrets. The included workflow automatically pushes the engine folder to that Space when its code changes. The uploaded MOSS source ZIP contains source code, not model weights; the Docker image downloads the official ONNX TTS and audio-tokenizer weights on first startup from Hugging Face.
+## Rendering capabilities and honest limits
 
-## Implemented frontend
+The Python render engine is a separate deployment requirement. A GitHub commit or Cloudflare Pages deployment does not itself start this engine. Configure a reachable engine before expecting MP4 output.
 
-- One-topic-at-a-time workflow.
-- Text paste field and optional topic title.
-- Local reference voice profile stored in IndexedDB.
-- MOSS TTS preview request and playback.
-- User approval gate before trimming/rendering.
-- Render job status polling.
-- MP4, cleaned WAV and attribution download controls.
-- Engine URL and token configuration.
+The documented first renderer trims low-volume pauses, transcribes speech with Whisper segment timestamps, searches Wikimedia Commons still images and creates a 1080×1920 MP4 with animated zoom/pan, split layouts, collage and colorful infographic cards. It does not yet search video stock footage, guarantee exact word-level synchronization, or composite the user's face camera footage. It must not be described as a finished full stock-video director until those features are built and tested.
 
-## Engine behavior and limits
-
-- TTS uses MOSS-TTS-Nano ONNX CPU voice cloning.
-- Silence trimming uses FFmpeg's `silenceremove` filter. It trims long low-level gaps; it does not semantically identify breaths. Very quiet breaths may be shortened, so preview the final audio.
-- Speech timestamps are generated with Whisper segment-level timestamps, not exact forced word alignment.
-- The first renderer searches still images on Wikimedia Commons and filters known CC0, Public Domain, CC BY and CC BY-SA licenses. It creates animated zoom/pan, split layouts, collage and bright infographic cards, then writes source/license credits.
-- Video stock footage search, sophisticated word-level alignment, face-camera compositing and cinematic fine-grained editing are future improvements.
-- Output is 1080×1920, 25 fps, H.264/AAC. Actual MP4 duration follows the cleaned audio; spoken content is not cut merely to force 40–45 seconds.
-- The media engine is CPU intensive. Free model weights do not mean unlimited or zero-cost compute.
+The rendered duration follows the cleaned narration; spoken words are not cut just to force 40–45 seconds. Preview the cleaned result because quiet breaths can be shortened by silence detection.
 
 ## Cloudflare Pages settings
 
-Repository subfolder: `Content-factory/`
 - Root directory: `Content-factory`
-- Framework preset: `None`
+- Framework preset: None
 - Build command: empty
 - Build output directory: `public`
 
-## Privacy and security
+## Security and privacy
 
-- Set a long random `FACTORY_API_TOKEN` on the engine and paste the same token into the website's Motor ayarı.
+- Set a long random `FACTORY_API_TOKEN` on the engine and paste the same token into Motor ayarı.
 - Restrict `ALLOWED_ORIGINS` to the production Pages origin.
-- Use only a voice you own or are authorized to clone.
-- Rendered jobs are temporary and held by the engine process; they are not long-term cloud storage.
-
-
-## Separate VoiceStudio workspace
-
-The homepage now has a separate **Voice Studio** section alongside Shorts Factory. It connects to a running VoiceStudio backend and uses its documented OpenAI-compatible API:
-
-- `GET /health` checks the backend.
-- `GET /v1/audio/voices` lists saved voice profiles.
-- `POST /v1/audio/speech` generates a WAV preview with the selected profile.
-
-In the Voice Studio panel, enter the VoiceStudio service-root URL (not a `/v1` URL), optional remote bearer token, choose a discovered voice profile, paste text and generate/download WAV. The settings are stored in this browser's local storage.
-
-**Deployment requirement:** VoiceStudio itself must be running on a reachable machine/server. The Content Factory Pages site does not host its Python model runtime. A remote VoiceStudio backend must allow HTTPS requests from the Pages domain through CORS and must be protected with its own authentication. Keep remote API keys private; do not share the configured browser with other people.
-
-**Scope of this first integration:** it generates speech with an existing saved voice profile. Creating/cloning a new voice profile is still done in VoiceStudio's own profile workflow and is not yet built into this panel. The existing MOSS-based Shorts preview/render flow remains separate and unchanged.
+- Only record and use your own voice or a voice you are authorized to use.
+- Do not commit recordings, generated media or secrets to GitHub.
