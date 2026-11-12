@@ -85,39 +85,107 @@ $("#startRecording").onclick=()=>{state.reference=null;revoke(state.referenceUrl
 window.addEventListener("pagehide",()=>{if(state.recorder&&state.recorder.state!=="inactive")state.recorder.stop();stopTracks()});
 
 const AGENT_SKILLS=[
-["yt-audit","Kanal denetimi"],["yt-chapters","Video bölümleri"],["yt-comment","Yorum analizi"],["yt-edit","Kurgu / sessizlik"],["yt-package","Başlık ve kapak"],["yt-plan","Yayın planı"],["yt-retention","İzleyici tutma"],["yt-script","Senaryo ve kancalar"],["yt-seo","YouTube SEO"],["yt-shorts","Uzun videodan Shorts"],["yt-viral","Viral analiz"]
+{id:"yt-audit",label:"Kanal denetimi",mode:"chat",description:"Kanalını paketleme, içerik kalitesi, yayın düzeni ve izleyici tutma açısından değerlendirir. Sonunda tek öncelikli iyileştirme verir.",help:"Kanal bağlantısını gir. Son 10 başlığı ve son 3 videonun ilk 15 saniyesini eklersen denetim çok daha somut olur.",fields:[["channelUrl","YouTube kanal bağlantısı","input","https://www.youtube.com/@kanaladi",true],["recentTitles","Son 10 video başlığı (her satıra bir başlık)","textarea","Başlıkları alt alta yapıştır…",false],["recentOpeners","Son 3 videonun ilk 15 saniyesi / açılış metni","textarea","Video 1: …\\nVideo 2: …\\nVideo 3: …",false],["uploadRhythm","Yayın sıklığı / son yayın tarihleri","input","Örn. haftada 2 Shorts, ayda 1 uzun video",false],["retentionCsv","Varsa izleyici tutma CSV verisi","textarea","İsteğe bağlı: CSV içeriğini yapıştır…",false]]},
+{id:"yt-chapters",label:"Video bölümleri",mode:"tool",tool:"chapters",description:"Zaman damgalı altyazıdan YouTube bölümleri için taslak çıkarır.",help:"SRT veya VTT altyazı içeriğini ekle. İlk bölüm 00:00 olmalı ve bölümler en az 10 saniye sürmelidir.",fields:[["srt","SRT / VTT altyazı içeriği","textarea","1\\n00:00:00,000 --> 00:00:03,000\\nKonuşma metni…",true],["target","Hedef bölüm sayısı","input","7",false]]},
+{id:"yt-comment",label:"Yorum analizi",mode:"chat",description:"Yorumları soru, düzeltme, olumlu geri bildirim ve cevap verilmemesi gereken kışkırtmalar olarak ayırır; cevap taslakları hazırlar.",help:"Yorumları mümkünse her satıra bir tane gelecek şekilde yapıştır. Kullanıcı adı veya özel bilgi eklemek zorunda değilsin.",fields:[["comments","YouTube yorumları","textarea","Yorumları buraya yapıştır…",true],["voice","Cevap üslubu / dikkat edilecek noktalar","textarea","Kısa, doğal, samimi; doğrulanmamış iddia yok…",false]]},
+{id:"yt-edit",label:"Kurgu / sessizlik",mode:"tool",tool:"deadair",description:"SRT/VTT altyazı zamanlarına göre uzun duraklamaları ve dolgu ifadelerini işaretler.",help:"Bu araç videoyu doğrudan kesmez; CapCut'ta uygulayabileceğin zaman kodlu kesim listesi üretir.",fields:[["srt","SRT / VTT altyazı içeriği","textarea","Altyazı dosyasının metnini yapıştır…",true],["floor","Korunacak sessizlik eşiği (saniye)","input","0.45",false]]},
+{id:"yt-package",label:"Başlık ve kapak",mode:"tool",tool:"title",description:"Başlığın uzunluğunu, mobil görünümünü ve kapak metniyle tekrarını kontrol eder.",help:"Bu kontrol başlık kalitesine dair teknik uyarı verir; tıklanma oranını garanti etmez.",fields:[["title","Video başlığı","input","Başlığı yaz…",true],["thumb","Kapak metni (isteğe bağlı)","input","Kapakta görünen kısa metin…",false]]},
+{id:"yt-plan",label:"Yayın planı",mode:"chat",description:"Gerçek zamanına ve hazırladığın işlere uygun haftalık veya aylık YouTube yayın planı hazırlar.",help:"Planı gerçek kapasiteye göre kurmak için haftalık zamanını ve yarım kalmış içeriklerini belirt.",fields:[["hours","Haftalık ayırabileceğin süre","input","Örn. 8 saat",true],["unfinished","Hazır veya yarım kalmış işler","textarea","Hazır videolar, çekilmiş sesler, taslaklar…",false],["goal","Hedeflenen yayın sayısı ve format","input","Örn. 3 Shorts + 1 uzun video",false],["analytics","YouTube Studio'dan bilinen iyi yayın gün/saatleri","input","Bilmiyorsan boş bırak",false]]},
+{id:"yt-retention",label:"İzleyici tutma",mode:"tool",tool:"retention",description:"YouTube Studio retention CSV verisindeki açılış kaybını ve en sert düşüşleri bulur.",help:"CSV içeriğini YouTube Studio dışa aktarımından yapıştır. Sütunlar zaman/konum ve izleyici tutma yüzdesi olmalı.",fields:[["csv","Audience retention CSV içeriği","textarea","CSV içeriğini yapıştır…",true],["duration","Video süresi (saniye, isteğe bağlı)","input","Örn. 615",false]]},
+{id:"yt-script",label:"Senaryo ve kancalar",mode:"chat",description:"21 kanca yaklaşımından beş açılış alternatifi, puanlama ve ekranda görülecek sahnelerle senaryo hazırlar.",help:"Konu, hedef izleyici ve istediğin süreyi belirt. Senaryoda kaynak gerektiren iddialar doğrulanmalı.",fields:[["topic","Video konusu / fikri","textarea","Videonun fikrini anlat…",true],["audience","Hedef izleyici","input","Örn. Türkçe Shorts izleyicisi",false],["duration","Hedef süre ve format","input","Örn. 40–45 saniye, 9:16 Shorts",false],["constraints","Üslup ve özel kurallar","textarea","Ton, yasaklı ifadeler, kaynak beklentisi…",false]]},
+{id:"yt-seo",label:"YouTube SEO",mode:"chat",description:"Arama niyetine göre başlık, ilk iki açıklama satırı, açıklama ve anlamlı etiketler üretir.",help:"Anahtar kelimeyi ve videonun gerçekten ne sunduğunu belirt. Alakasız etiket doldurmayacağız.",fields:[["topic","Video konusu ve içeriğin özeti","textarea","Video ne anlatıyor?…",true],["keyword","Öncelikli arama ifadesi","input","İzleyicinin arayacağı ifade…",false],["title","Mevcut başlık (varsa)","input","Mevcut başlık…",false],["audience","Hedef izleyici / dil","input","Örn. Türkiye, Türkçe",false]]},
+{id:"yt-shorts",label:"Uzun videodan Shorts",mode:"chat",description:"Uzun videonun altyazısından tek başına anlaşılabilen, 20–55 saniyelik Shorts adayları bulur.",help:"Zaman kodlu SRT/VTT altyazıyı ekle. En iyi beş kesit için zaman aralığı, yeni kanca ve döngü fikri hazırlanır.",fields:[["transcript","Zaman kodlu SRT / VTT altyazı","textarea","Altyazıyı buraya yapıştır…",true],["count","İstenen Shorts adedi","input","5",false],["style","Kurgu / anlatım tercihi","textarea","Sessiz, konuşmalı, altyazılı, yüz kamerası…",false]]},
+{id:"yt-viral",label:"Viral analiz",mode:"tool",tool:"viral",description:"Verdiğin video listesini her kanalın kendi medyan görüntülenmesiyle karşılaştırır.",help:"Her kanaldan en az dört video içeren JSON verisi gerekir. Araç YouTube'dan otomatik veri çekmez.",fields:[["json","Video verileri JSON","textarea",'[{"channel":"Kanal","title":"Video başlığı","views":120000,"url":"https://..."}]',true]]}
 ];
-function agentFields(){
- const t=$("#agentTool").value, root=$("#agentFields");
- const specs={
- hookscore:[["hook","Kanca metni","textarea"]],
- title:[["title","Video başlığı","input"],["thumb","Kapak metni (isteğe bağlı)","input"]],
- deadair:[["srt","SRT / VTT altyazı içeriği","textarea"],["floor","Sessizlik eşiği (sn) · varsayılan 0.45","input"]],
- chapters:[["srt","SRT / VTT altyazı içeriği","textarea"],["target","Hedef bölüm sayısı · varsayılan 7","input"]],
- retention:[["csv","YouTube retention CSV içeriği","textarea"],["duration","Video süresi (saniye, isteğe bağlı)","input"]],
- viral:[["json","Video verileri JSON içeriği","textarea"]]
- };
- root.innerHTML="";
- (specs[t]||[]).forEach(([id,label,type])=>{
- const wrap=document.createElement("label");wrap.className="field-label";wrap.textContent=label;
- const el=document.createElement(type==="textarea"?"textarea":"input");el.id="agent-"+id;
- if(type==="textarea"){el.rows=5;el.placeholder=id==="srt"?"1\00:00:00,000 --> 00:00:02,000\Konuşma metni…":id==="csv"?"Elapsed time,Audience retention\0,100\10,80":"İçeriği buraya yapıştır…"}else{el.type="text";el.placeholder=id==="floor"?"0.45":id==="target"?"7":""}
- wrap.append(el);root.append(wrap);
+let activeSkill=null;
+function skillById(id){return AGENT_SKILLS.find(x=>x.id===id)}
+function renderSkillInputs(skill){
+ const root=$("#skillInputs");root.innerHTML="";
+ skill.fields.forEach(([id,label,type,placeholder,required])=>{
+  const wrap=document.createElement("label");wrap.className="skill-field";
+  const cap=document.createElement("span");cap.textContent=label+(required?" *":"");wrap.append(cap);
+  const el=document.createElement(type==="textarea"?"textarea":"input");el.id="skill-"+id;el.placeholder=placeholder||"";el.required=!!required;
+  if(type==="textarea")el.rows=id==="recentTitles"?5:7;
+  wrap.append(el);root.append(wrap);
  });
 }
-async function loadAgentHub(){
- const root=$("#agentSkills");root.innerHTML="";
- AGENT_SKILLS.forEach(([id,label])=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=label;b.title=id;b.onclick=async()=>{const prompt="YouTube Agent görevi: "+label+" ("+id+"). Bu uzman rolünü uygula. Önce gerekli girdileri sor; sonra sonucu, varsayımlarını ve doğrulama notlarını sun. Claude veya harici API kullanma.";try{await navigator.clipboard.writeText(prompt);setStatus("#agentStatus","ChatGPT'ye aktarılacak görev kopyalandı: "+label)}catch{setStatus("#agentStatus",prompt)}};root.append(b)});
- agentFields();
- try{const r=await fetch("/api/agent/registry");if(!r.ok)throw Error("HTTP "+r.status);const data=await r.json();setStatus("#agentStatus",data.skills.length+" uzmanlık · "+data.tools.length+" ücretsiz analiz aracı · Cloudflare üzerinde");}
- catch(e){setStatus("#agentStatus","Ajan listesi yüklenemedi: "+e.message)}
+function selectSkill(id){
+ const skill=skillById(id);if(!skill)return;activeSkill=skill;
+ document.querySelectorAll(".agent-skill").forEach(b=>b.classList.toggle("active",b.dataset.skill===id));
+ $("#skillTitle").textContent=skill.label;$("#skillDescription").textContent=skill.description;
+ $("#skillMode").textContent=skill.mode==="tool"?"PANELDE ÇALIŞAN ANALİZ":"CHATGPT GÖREVİ";
+ $("#skillHelp").textContent=skill.help;
+ $("#skillAction").textContent=skill.mode==="tool"?"Analizi şimdi çalıştır":"Denetim / görev paketini hazırla";
+ $("#skillResult").classList.add("hidden");$("#skillResult").replaceChildren();
+ $("#skillPromptWrap").classList.add("hidden");$("#skillPrompt").value="";
+ renderSkillInputs(skill);$("#skillWorkspace").classList.remove("hidden");
+ $("#skillWorkspace").scrollIntoView({behavior:"smooth",block:"start"});
+ setStatus("#agentStatus",skill.label+" çalışma ekranı açık. Gerekli bilgileri doldur.");
 }
-async function runAgentTool(){
- const tool=$("#agentTool").value,params={};
- const keys={hookscore:["hook"],title:["title","thumb"],deadair:["srt","floor"],chapters:["srt","target"],retention:["csv","duration"],viral:["json"]}[tool];
- keys.forEach(k=>{const el=$("#agent-"+k);if(el)params[k]=el.value.trim()});
- const output=$("#agentOutput"),button=$("#runAgent");
- button.disabled=true;button.textContent="Analiz ediliyor…";output.classList.remove("hidden");output.textContent="Cloudflare ücretsiz analiz aracı çalıştırılıyor…";
- try{const r=await fetch("/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tool,params})});const data=await r.json();if(!r.ok)throw Error(data.detail||"Araç çalıştırılamadı.");output.textContent=JSON.stringify(data.result,null,2);setStatus("#agentStatus","Analiz tamamlandı · "+tool+" · Ücretsiz Cloudflare endpoint")}catch(e){output.textContent="Hata: "+e.message;setStatus("#agentStatus","Analiz tamamlanamadı")}finally{button.disabled=false;button.textContent="Analiz aracını çalıştır"}
+function setStatus(selector,message){$(selector).textContent=message}
+function collectSkillParams(skill){
+ const values={};let missing=[];
+ skill.fields.forEach(([id,label,,placeholder,required])=>{const el=$("#skill-"+id);const value=(el?.value||"").trim();values[id]=value;if(required&&!value)missing.push(label)});
+ if(missing.length)throw Error("Önce şu alanları doldur: "+missing.join(", "));
+ return values;
 }
-$("#agentTool").addEventListener("change",agentFields);$("#runAgent").addEventListener("click",runAgentTool);loadAgentHub();
+function appendLine(root,label,value){
+ const row=document.createElement("div");row.className="result-line";
+ const b=document.createElement("b");b.textContent=label;const p=document.createElement("span");p.textContent=String(value??"");
+ row.append(b,p);root.append(row);
+}
+function renderToolResult(tool,data){
+ const root=$("#skillResult");root.replaceChildren();root.classList.remove("hidden");
+ const heading=document.createElement("h4");heading.textContent="Analiz sonucu";root.append(heading);
+ if(tool==="title"){appendLine(root,"Puan",data.score+"/100");appendLine(root,"Başlık",data.title);(data.good||[]).forEach(x=>appendLine(root,"Olumlu",x));(data.issues||[]).forEach(x=>appendLine(root,"Düzelt",x))}
+ else if(tool==="deadair"){appendLine(root,"Orijinal süre",data.duration+" sn");appendLine(root,"İşaretlenen kesinti",data.removed_seconds+" sn");appendLine(root,"Tahmini son süre",data.estimated_output_seconds+" sn");(data.cuts||[]).forEach(x=>appendLine(root,x.kind,x.start+"–"+x.end+" sn · "+x.why));}
+ else if(tool==="chapters"){appendLine(root,"Bölüm kontrolü",data.valid?"Taslak uygun":"Taslak kontrol edilmeli");(data.chapters||[]).forEach(x=>appendLine(root,x.label,x.draft_title+" · "+x.seconds+" sn"))}
+ else if(tool==="retention"){appendLine(root,"Açılış kaybı",data.hook_loss+" puan");appendLine(root,"Başlangıç / bitiş",data.start+"% / "+data.end+"%");(data.largest_drops||[]).forEach(x=>appendLine(root,"Düşüş",x.from+" → "+x.to+" · -"+x.lost+"%"))}
+ else if(tool==="viral"){appendLine(root,"Öne çıkan video sayısı",(data.outliers||[]).length);(data.outliers||[]).slice(0,10).forEach(x=>appendLine(root,x.channel,x.title+" · "+x.multiple+"× kanal medyanı"))}
+ else {appendLine(root,"Sonuç",JSON.stringify(data))}
+ if(data.note)appendLine(root,"Not",data.note);
+}
+function buildChatPrompt(skill,values){
+ const task={
+ "yt-audit":"YouTube kanalını baştan sona denetle. Kanal bağlantısını web üzerinden incele; erişilemeyen veya doğrulanamayan veriyi açıkça belirt. Son 10 başlığı bir set olarak, küçük ekranda kapak okunabilirliğini, son 3 videonun ilk 15 saniyesini, yükleme düzenini ve varsa retention verisini değerlendir. Yirmi maddelik genel liste çıkarma: tek en önemli düzeltmeyi seç. Ayrıca somut olarak çalışan üç şeyi, henüz dokunulmaması gerekenleri ve bu hafta yapılacak tek eylemi yaz. Kaynak ve gözlemleri birbirinden ayır.",
+ "yt-comment":"Yorumları önce soru, düzeltme, olumlu geri bildirim ve bait olarak sayısal şekilde ayır. Sonra yalnızca uygun olanlara 30 kelimenin altında, doğal cevaplar hazırla. Doğrulanamayan düzeltmelerle tartışma; bait yorumlarına cevap önermeme. Sabitlenecek tek yorumu gerekçesiyle öner.",
+ "yt-plan":"Gerçek kapasiteye göre haftalık yayın planı hazırla. Önce haftalık saat ve yarım kalmış işler bilgisini dikkate al. Bir ana video, bir düşük maliyetli içerik ve ana videodan türetilen üç Shorts öner. Gün/saat verisi yoksa yayın günlerini uydurma.",
+ "yt-script":"YouTube senaryosu üret. Beş farklı açılış kancası yaz, her birini kanca kriterlerine göre karşılaştır ve en iyi ikisini seç. Sonra açılış, merak dönüşü, gelişme, payoff ve kapanıştan oluşan konuşma metnini hazırla. Her bölüm için [EKRANDA] görsel yönü ver. Süreyi yaklaşık 150 kelime/dakika ile hesapla. Sayısal iddia veya kaynak uydurma.",
+ "yt-seo":"Arama niyetini tanımla. Üç gerçek arama sorgusu, bunlarla uyumlu başlık, ilk iki açıklama satırı, tam açıklama ve en fazla 15 alakalı etiket üret. Başlık ve açıklama gerçekte videoda olmayan bir vaat içermesin.",
+ "yt-shorts":"Transkriptten bağlam olmadan da anlaşılabilen 20–55 saniyelik bölümleri bul. En iyi beş adayı zaman kodları ve ilk cümleleriyle sırala. Her biri için yeni açılış kancası, ilk 2 saniye ekran yazısı, kapanış/döngü ve 9:16 kadraj notu yaz."
+ }[skill.id];
+ return "CONTENT FACTORY · "+skill.label.toUpperCase()+"\\n\\nGÖREV\\n"+task+"\\n\\nKULLANICI GİRDİLERİ\\n"+Object.entries(values).map(([k,v])=>k.toUpperCase()+":\\n"+(v||"(verilmedi)")).join("\\n\\n")+"\\n\\nÇALIŞMA KURALLARI\\n- Bu konuşmada ChatGPT olarak çalış; Claude veya harici ücretli API kullanma.\\n- Verilmeyen veriyi uydurma; eksikse sor veya belirsizliğini açıkla.\\n- Gerekliyse güncel ve kamuya açık bilgileri web üzerinden doğrula, kaynakları belirt.\\n- Sonucu uygulanabilir ve Türkçe hazırla.\\n- Hiçbir şeyi kullanıcı onayı olmadan yayımlama.\\n\\nSonunda sor: Onaylıyor musun, değiştirelim mi?";
+}
+async function runSelectedSkill(){
+ if(!activeSkill)return;
+ const button=$("#skillAction");button.disabled=true;
+ try{
+  const values=collectSkillParams(activeSkill);
+  if(activeSkill.mode==="tool"){
+   button.textContent="Analiz çalışıyor…";setStatus("#agentStatus",activeSkill.label+" verisi analiz ediliyor.");
+   const params={};
+   if(activeSkill.id==="yt-package"){params.title=values.title;params.thumb=values.thumb}
+   if(activeSkill.id==="yt-edit"){params.srt=values.srt;params.floor=values.floor||"0.45"}
+   if(activeSkill.id==="yt-chapters"){params.srt=values.srt;params.target=values.target||"7"}
+   if(activeSkill.id==="yt-retention"){params.csv=values.csv;params.duration=values.duration||""}
+   if(activeSkill.id==="yt-viral"){params.json=values.json}
+   const response=await fetch("/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tool:activeSkill.tool,params})});
+   const result=await response.json();if(!response.ok)throw Error(result.detail||"Analiz başarısız.");
+   renderToolResult(activeSkill.tool,result.result);setStatus("#agentStatus",activeSkill.label+" tamamlandı. Sonuç aşağıda.");
+  }else{
+   const prompt=buildChatPrompt(activeSkill,values);$("#skillPrompt").value=prompt;$("#skillPromptWrap").classList.remove("hidden");
+   $("#skillResult").classList.add("hidden");setStatus("#agentStatus","Görev paketi hazır. Şimdi kopyalayıp bu ChatGPT sohbetine yapıştır.");
+   $("#skillPromptWrap").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }
+ }catch(e){setStatus("#agentStatus",e.message);$("#skillResult").classList.remove("hidden");$("#skillResult").textContent="İşlem yapılamadı: "+e.message}
+ finally{button.disabled=false;button.textContent=activeSkill?.mode==="tool"?"Analizi şimdi çalıştır":"Görev paketini oluştur"}
+}
+function loadAgentHub(){
+ const root=$("#agentSkills");root.replaceChildren();
+ AGENT_SKILLS.forEach(skill=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=skill.label;b.title=skill.id;b.dataset.skill=skill.id;b.addEventListener("click",()=>selectSkill(skill.id));root.append(b)});
+ fetch("/api/agent/registry").then(r=>r.ok?r.json():Promise.reject(Error("HTTP "+r.status))).then(data=>setStatus("#agentStatus",data.skills.length+" uzmanlık hazır · "+data.tools.length+" panel içi analiz aracı. Bir uzmanlık seçerek başla.")).catch(e=>setStatus("#agentStatus","Ajan listesi okunamadı: "+e.message));
+}
+$("#skillAction").addEventListener("click",runSelectedSkill);
+$("#closeSkill").addEventListener("click",()=>{$("#skillWorkspace").classList.add("hidden");activeSkill=null;document.querySelectorAll(".agent-skill").forEach(b=>b.classList.remove("active"))});
+$("#copySkillPrompt").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("#skillPrompt").value);setStatus("#agentStatus","Görev kopyalandı. Bu sohbet alanına yapıştırıp gönder.")}catch(e){$("#skillPrompt").focus();$("#skillPrompt").select();setStatus("#agentStatus","Metni seçip Kopyala komutunu kullan.")}});
+loadAgentHub();
