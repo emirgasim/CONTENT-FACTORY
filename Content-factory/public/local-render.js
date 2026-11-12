@@ -182,7 +182,7 @@ async function searchCommons(query,continuation=null){
   gsrnamespace:"6",gsrlimit:"50",prop:"imageinfo",
   iiprop:"url|extmetadata|thumbmime",iiurlwidth:"1400"
  });
- if(continuation)params.set("gsroffset",String(continuation));
+ if(continuation)params.set("gsrcontinue",String(continuation));
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),16000);
  try{
   const response=await fetch(COMMONS+"?"+params.toString(),{signal:controller.signal,mode:"cors",credentials:"omit"});
@@ -200,7 +200,7 @@ async function searchCommons(query,continuation=null){
     license,licenseUrl:metaValue(meta,"LicenseUrl"),width:info.width||0,height:info.height||0
    });
   }
-  return {items,continuation:data.continue?.gsroffset??null};
+  return {items,continuation:data.continue?.gsrcontinue??null};
  }finally{clearTimeout(timer);}
 }
 function loadImage(item){
