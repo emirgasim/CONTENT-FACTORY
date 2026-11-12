@@ -83,3 +83,42 @@ async function startRecording(){if(!navigator.mediaDevices?.getUserMedia||!windo
 function stopRecording(){if(state.recordTimer){clearInterval(state.recordTimer);state.recordTimer=null}if(state.recorder&&state.recorder.state!=="inactive")state.recorder.stop()}
 $("#startRecording").onclick=()=>{state.reference=null;revoke(state.referenceUrl);state.referenceUrl=null;$("#audioFile").value="";$("#referencePreview").removeAttribute("src");$("#referencePreview").classList.add("hidden");loadReference();startRecording()};$("#stopRecording").onclick=stopRecording;$("#redoRecording").onclick=()=>{state.reference=null;revoke(state.referenceUrl);state.referenceUrl=null;$("#audioFile").value="";$("#referencePreview").removeAttribute("src");$("#referencePreview").classList.add("hidden");$("#recordTimer").textContent="00:00";loadReference();startRecording()};$("#audioFile").onchange=e=>{const file=e.target.files?.[0];if(!file)return;const audioExt=/\.(mp3|m4a|wav|aac|mp4|mpeg|mpga|ogg|opus|webm|flac)$/i.test(file.name);const audioMime=/^(audio\/|video\/mp4$|application\/octet-stream$)/i.test(file.type||"");if(!audioExt&&!audioMime){alert("Lütfen MP3, M4A, WAV, AAC veya desteklenen bir ses dosyası seç.");e.target.value="";return}if(file.size>30*1024*1024){alert("Ses dosyası en fazla 30 MB olabilir.");e.target.value="";return}if(state.recorder&&state.recorder.state!=="inactive"){state.discardRecordingOnStop=true;state.recorder.stop()}stopTracks();revoke(state.referenceUrl);state.reference=file;state.referenceUrl=URL.createObjectURL(file);$("#referencePreview").src=state.referenceUrl;$("#referencePreview").classList.remove("hidden");$("#recordState").textContent="Hazır ses yüklendi";$("#recordStatus").textContent="Yüklenen ses hazır: "+file.name+" · "+(file.size/1024/1024).toFixed(2)+" MB";$("#startRecording").disabled=false;$("#stopRecording").disabled=true;$("#redoRecording").disabled=true;$("#redoRecording").classList.add("hidden");$("#recordIndicator").classList.remove("recording");loadReference()};
 window.addEventListener("pagehide",()=>{if(state.recorder&&state.recorder.state!=="inactive")state.recorder.stop();stopTracks()});
+\n
+const AGENT_SKILLS=[
+["yt-audit","Kanal denetimi"],["yt-chapters","Video bölümleri"],["yt-comment","Yorum analizi"],["yt-edit","Kurgu / sessizlik"],["yt-package","Başlık ve kapak"],["yt-plan","Yayın planı"],["yt-retention","İzleyici tutma"],["yt-script","Senaryo ve kancalar"],["yt-seo","YouTube SEO"],["yt-shorts","Uzun videodan Shorts"],["yt-viral","Viral analiz"]
+];
+function agentFields(){
+ const t=$("#agentTool").value, root=$("#agentFields");
+ const specs={
+ hookscore:[["hook","Kanca metni","textarea"]],
+ title:[["title","Video başlığı","input"],["thumb","Kapak metni (isteğe bağlı)","input"]],
+ deadair:[["srt","SRT / VTT altyazı içeriği","textarea"],["floor","Sessizlik eşiği (sn) · varsayılan 0.45","input"]],
+ chapters:[["srt","SRT / VTT altyazı içeriği","textarea"],["target","Hedef bölüm sayısı · varsayılan 7","input"]],
+ retention:[["csv","YouTube retention CSV içeriği","textarea"],["duration","Video süresi (saniye, isteğe bağlı)","input"]],
+ viral:[["json","Video verileri JSON içeriği","textarea"]]
+ };
+ root.innerHTML="";
+ (specs[t]||[]).forEach(([id,label,type])=>{
+ const wrap=document.createElement("label");wrap.className="field-label";wrap.textContent=label;
+ const el=document.createElement(type==="textarea"?"textarea":"input");el.id="agent-"+id;
+ if(type==="textarea"){el.rows=5;el.placeholder=id==="srt"?"1\\n00:00:00,000 --> 00:00:02,000\\nKonuşma metni…":id==="csv"?"Elapsed time,Audience retention\\n0,100\\n10,80":"İçeriği buraya yapıştır…"}else{el.type="text";el.placeholder=id==="floor"?"0.45":id==="target"?"7":""}
+ wrap.append(el);root.append(wrap);
+ });
+}
+async function loadAgentHub(){
+ const root=$("#agentSkills");root.innerHTML="";
+ AGENT_SKILLS.forEach(([id,label])=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=label;b.title=id;b.onclick=()=>{const prompt="YouTube Agent görevi: "+label+" ("+id+"). Bu uzmanlık kılavuzunu kullanarak içeriğimi hazırla. Önce gerekli girdileri değerlendir, sonra sonucu ve doğrulama notlarını sun.";navigator.clipboard?.writeText(prompt).then(()=>setStatus("#agentStatus","ChatGPT görev metni kopyalandı: "+label)).catch(()=>setStatus("#agentStatus",prompt));};root.append(b)});
+ agentFields();
+ const base=engineUrl();if(!base){setStatus("#agentStatus","Video motoru bağlantısı yapılınca ajan araçları etkinleşir.");return}
+ try{const r=await fetch(base+"/api/agent/registry",{headers:headers()});if(!r.ok)throw Error("HTTP "+r.status);const data=await r.json();setStatus("#agentStatus",data.skills.length+" uzmanlık · "+data.tools.length+" araç bulundu.")}catch(e){setStatus("#agentStatus","Ajan servisi bağlanamadı: "+e.message)}
+}
+async function runAgentTool(){
+ const tool=$("#agentTool").value,params={};
+ const keys={hookscore:["hook"],title:["title","thumb"],deadair:["srt","floor"],chapters:["srt","target"],retention:["csv","duration"],viral:["json"]}[tool];
+ keys.forEach(k=>{const el=$("#agent-"+k);if(el)params[k]=el.value.trim()});
+ const output=$("#agentOutput"),button=$("#runAgent");
+ if(!engineUrl()){setStatus("#agentStatus","Önce Video motoru bölümünden servis adresini kaydet.");return}
+ button.disabled=true;button.textContent="Analiz ediliyor…";output.classList.remove("hidden");output.textContent="Ajan aracı çalıştırılıyor…";
+ try{const r=await fetch(engineUrl()+"/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json",...headers()},body:JSON.stringify({tool,params})});const data=await r.json();if(!r.ok)throw Error(data.detail||"Araç çalıştırılamadı.");output.textContent=JSON.stringify(data.result,null,2);setStatus("#agentStatus","Analiz tamamlandı · "+tool)}catch(e){output.textContent="Hata: "+e.message;setStatus("#agentStatus","Analiz tamamlanamadı")}finally{button.disabled=false;button.textContent="Analiz aracını çalıştır"}
+}
+\n\n$("#agentTool").addEventListener("change",agentFields);$("#runAgent").addEventListener("click",runAgentTool);loadAgentHub();\n
