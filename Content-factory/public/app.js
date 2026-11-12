@@ -1,5 +1,6 @@
 const $=s=>document.querySelector(s);
 const state={reference:null,referenceUrl:null,videoUrl:null,audioUrl:null,creditsUrl:null,jobId:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
+window.cfState=state;
 const DB_NAME="content-factory-local",STORE="voice-profile";
 function engineUrl(){return ($("#engineUrl").value||localStorage.getItem("cf-engine-url")||"").trim().replace(/\/+$/,"")}
 function token(){return ($("#engineToken").value||localStorage.getItem("cf-engine-token")||"").trim()}
