@@ -18,9 +18,15 @@ function capabilities(){
  const button=$("#startRender");if(button)button.disabled=!(supported&&mp4&&state.reference&&$("#scriptText").value.trim()&&$("#hookText").value.trim());
 }
 function splitIntoScenes(text){
- const sentences=(text.match(/[^.!?]+[.!?]?/g)||[text]).map(x=>x.trim()).filter(Boolean),out=[];
- for(const sentence of sentences){const words=sentence.split(/\s+/);for(let i=0;i<words.length;i+=9)out.push(words.slice(i,i+9).join(" "));}
- return out.length?out:[text];
+ // Each sentence (and meaningful clause) gets its own visual. No fixed word or second cadence.
+ const normalized=String(text||"").replace(/\s+/g," ").trim();
+ const sentences=(normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)||[normalized]).map(x=>x.trim()).filter(Boolean);
+ const scenes=[];
+ for(const sentence of sentences){
+  const clauses=sentence.split(/(?<=[;:])\s+|(?<=—)\s+/u).map(x=>x.trim()).filter(Boolean);
+  for(const clause of clauses)scenes.push(clause);
+ }
+ return scenes.length?scenes:[normalized];
 }
 function timelineFor(text,duration){
  const scenes=splitIntoScenes(text),weights=scenes.map(x=>Math.max(1,x.split(/\s+/).length)),total=weights.reduce((a,b)=>a+b,0);let cursor=0;
@@ -219,48 +225,79 @@ function searchQueryVariants(sceneText,title){
  return [...new Set([main,secondary,sceneOnly].filter(Boolean))];
 }
 function sceneImageTarget(scene){
- // A new image is scheduled roughly every 2.5 seconds of narration.
- return Math.max(1,Math.ceil((scene.end-scene.start)/2.5));
+ // One context-matched visual per complete sentence/clause; scene duration is proportional to spoken word count.
+ return 1;
+}
+async function searchOpenverse(query){
+ const params=new URLSearchParams({q:query,page_size:"30",license:"cc0,pdm,by,by-sa",filter_dead:"true",extension:"jpg,jpeg,png,webp"});
+ const response=await fetch("https://api.openverse.org/v1/images/?"+params.toString(),{mode:"cors",credentials:"omit"});
+ if(!response.ok)throw Error("Openverse HTTP "+response.status);
+ const data=await response.json();
+ return (data.results||[]).map(x=>({
+  title:x.title||"Openverse image",url:x.url||x.thumbnail,pageUrl:x.foreign_landing_url||x.detail_url,
+  author:x.creator||"Not specified",license:String(x.license||"").toUpperCase(),
+  licenseUrl:x.license_url||"",width:x.width||0,height:x.height||0,source:"Openverse / "+(x.source||"open collection")
+ })).filter(x=>x.url&&x.pageUrl&&permittedLicense(x.license));
+}
+async function searchLibraryOfCongress(query){
+ const params=new URLSearchParams({fo:"json",q:query,c:"30",sp:"1"});
+ const response=await fetch("https://www.loc.gov/search/?"+params.toString(),{mode:"cors",credentials:"omit"});
+ if(!response.ok)throw Error("Library of Congress HTTP "+response.status);
+ const data=await response.json();
+ return (data.results||[]).map(x=>{
+  const rights=String(x.rights||x.description||"");
+  const open=/public domain|no known restrictions|no known copyright restrictions|unrestricted/i.test(rights);
+  const url=Array.isArray(x.image_url)?(x.image_url.find(u=>/\.jpe?g|\.png|\.webp/i.test(u))||x.image_url[0]):x.image_url;
+  return {title:x.title||"Library of Congress image",url,pageUrl:x.id||x.url,author:x.contributor||"Library of Congress",license:open?"Public domain / no known restrictions":"",licenseUrl:"https://www.loc.gov/legal/",width:0,height:0,source:"Library of Congress"};
+ }).filter(x=>x.url&&x.pageUrl&&x.license);
+}
+async function searchSource(source,query,continuation=null){
+ if(source==="Wikimedia Commons"){
+  const page=await searchCommons(query,continuation);
+  return {...page,items:page.items.map(x=>({...x,source:"Wikimedia Commons"}))};
+ }
+ if(source==="Openverse")return{items:await searchOpenverse(query),continuation:null};
+ if(source==="Library of Congress")return{items:await searchLibraryOfCongress(query),continuation:null};
+ return{items:[],continuation:null};
 }
 async function searchSceneAssets(timeline,title,ownImages){
- const assets=new Array(timeline.length).fill(null).map(()=>[]),credits=[],usedUrls=new Set(),own=ownImages||[];
- const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title),target:sceneImageTarget(scene)}));
+ const assets=new Array(timeline.length).fill(null),credits=[],usedUrls=new Set(),own=ownImages||[];
+ const sources=["Wikimedia Commons","Openverse","Library of Congress"];
+ const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title)}));
  let cursor=0;
  const workers=Array.from({length:3},async()=>{
   while(cursor<jobs.length){
    const job=jobs[cursor++];
+   // Rotate source order per scene to avoid a single-provider dependency.
+   const ordered=[...sources.slice(job.i%sources.length),...sources.slice(0,job.i%sources.length)];
    for(const query of job.queries){
-    if(assets[job.i].length>=job.target)break;
-    let continuation=null,emptyPages=0;
-    do{
+    if(assets[job.i])break;
+    for(const source of ordered){
      try{
-      const page=await searchCommons(query,continuation);
-      let pageAdded=0;
-      for(const item of page.items){
-       if(assets[job.i].length>=job.target)break;
-       if(usedUrls.has(item.url))continue;
-       usedUrls.add(item.url);
-       try{
-        const loaded=await loadImage(item);
-        assets[job.i].push(loaded);credits.push(loaded);pageAdded++;
-       }catch(e){console.warn("Stock image could not load",item.title,e);}
-      }
-      continuation=page.continuation;
-      emptyPages=pageAdded===0?emptyPages+1:0;
-     }catch(e){console.warn("Commons search failed",query,e);break;}
-    }while(assets[job.i].length<job.target&&continuation!==null&&emptyPages<2);
+      let continuation=null,attempts=0;
+      do{
+       const page=await searchSource(source,query,continuation);
+       for(const item of page.items){
+        if(assets[job.i])break;
+        if(!item.url||usedUrls.has(item.url))continue;
+        usedUrls.add(item.url);
+        try{
+         const loaded=await loadImage(item);
+         assets[job.i]=loaded;credits.push(loaded);
+        }catch(e){console.warn("Image skipped (load/CORS):",item.title,e);}
+       }
+       continuation=page.continuation;attempts++;
+      }while(!assets[job.i]&&continuation!==null&&attempts<4);
+      if(assets[job.i])break;
+     }catch(e){console.warn(source+" search failed:",query,e);}
+    }
    }
-   // User-supplied images are a final fallback; don't claim they are stock assets.
-   let ownIndex=0;
-   while(assets[job.i].length<job.target&&own.length){
-    const candidate=own[(job.i+ownIndex++)%own.length];
-    if(!assets[job.i].some(x=>x.url===candidate.url))assets[job.i].push(candidate);
-    if(ownIndex>=own.length)break;
-   }
+   if(!assets[job.i]&&own.length)assets[job.i]=own[job.i%own.length];
   }
  });
  await Promise.all(workers);
- return{assets,credits,required:jobs.reduce((n,j)=>n+j.target,0),found:assets.reduce((n,a)=>n+a.length,0)};
+ const found=assets.filter(Boolean).length;
+ return{assets,credits,required:timeline.length,found};
 }
 function loadOwnImages(files){
  return Promise.all(files.map(file=>new Promise((resolve,reject)=>{
@@ -331,7 +368,7 @@ function drawImageInSquare(ctx,image,x,y,size,time,style){
 function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook){
  const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
  const style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.max(0,Math.min(1,time/duration));
- const sceneImages=assets[scene.index]||[],image=sceneImages.length?sceneImages[Math.min(sceneImages.length-1,Math.floor(local/2.5))]?.img:null;
+ const sceneAsset=assets[scene.index],image=sceneAsset?.img||null;
  drawBackdrop(ctx,w,h,time,style);
  // Fixed center / chest-level square visual stage.
  const size=Math.min(w*.83,h*.49),x=(w-size)/2,y=h*.175;
@@ -403,10 +440,10 @@ async function renderLocally(){
  if(clean.duration<4)throw Error("Temizlenmiş ses çok kısa. Farklı bir kayıt seç.");
  const timeline=timelineFor(text,clean.duration),seed=randomSeed(),rawStyles=makeSceneStyles(timeline.length,seed),contrastAudit=auditSceneContrast(rawStyles),styles=contrastAudit.styles;
  const ownImages=await loadOwnImages(state.visualFiles||[]);
- setProgress(15);setText("#renderStatus",timeline.length+" sahne için internette açık lisanslı görseller aranıyor…");
+ setProgress(15);setText("#renderStatus",timeline.length+" cümle/ifade sahnesi için farklı açık görsel kaynaklarında konuya uygun görseller aranıyor…");
  const found=await searchSceneAssets(timeline,title,ownImages),assets=found.assets;
  const imageCount=found.found;
- setProgress(30);setText("#renderStatus",imageCount+"/"+found.required+" sahne görseli bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
+ setProgress(30);setText("#renderStatus",imageCount+"/"+found.required+" cümle sahnesine görsel bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
  const ctx=canvas.getContext("2d",{alpha:false});if(!ctx)throw Error("Canvas çizim alanı açılamadı.");
@@ -446,7 +483,7 @@ async function renderLocally(){
  revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
  state.videoUrl=URL.createObjectURL(blob);state.audioUrl=URL.createObjectURL(wavBlob(clean));
  const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Kanca: "+(hook||"(manuel kanca girilmedi)"),"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
- for(let i=0;i<assets.length;i++){for(let j=0;j<(assets[i]||[]).length;j++){const item=assets[i][j];if(!item)continue;if(item.own){creditLines.push("Sahne "+(i+1)+" / Görsel "+(j+1)+": Kullanıcının yüklediği görsel — "+item.title);}else{creditLines.push("Sahne "+(i+1)+" / Görsel "+(j+1)+": "+item.title,"Yazar: "+item.author,"Lisans: "+item.license,"Lisans bağlantısı: "+item.licenseUrl,"Dosya sayfası: "+item.pageUrl,"");}}}
+ for(let i=0;i<assets.length;i++){for(let j=0;j<(assets[i]?1:0);j++){const item=assets[i];if(!item)continue;if(item.own){creditLines.push("Sahne "+(i+1)+": Kullanıcının yüklediği görsel — "+item.title);}else{creditLines.push("Sahne "+(i+1)+": "+item.title,"Kaynak: "+(item.source||"Açık görsel koleksiyonu"),"Yazar: "+item.author,"Lisans: "+item.license,"Lisans bağlantısı: "+item.licenseUrl,"Dosya sayfası: "+item.pageUrl,"");}}}
  if(!imageCount)creditLines.push("Commons aramasında uygun görsel bulunamadı; bu sahneler özgün grafik illüstrasyonlarıyla oluşturuldu.");
  creditLines.push("Not: Wikimedia Commons dosyalarının her biri kendi dosya sayfasındaki lisans ve atıf koşullarıyla yeniden kullanılmalıdır.");
  state.creditsUrl=URL.createObjectURL(new Blob([creditLines.join("\n")],{type:"text/plain;charset=utf-8"}));
