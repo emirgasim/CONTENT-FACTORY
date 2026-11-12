@@ -84,13 +84,13 @@ function makeSceneStyles(count,seed){
  const rnd=makeRng(seed),styles=[];
  const themes=[
   {bg:"#FFE600",captionPlate:"#FFF4A8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#FF2492",accent2:"#00A8FF"},
-  {bg:"#FF2694",captionPlate:"#C50068",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FFE000",accent2:"#00D7F5"},
-  {bg:"#00BFF3",captionPlate:"#0053C7",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FF2795",accent2:"#FFE000"},
+  {bg:"#FF2694",captionPlate:"#A80056",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FFE000",accent2:"#00D7F5"},
+  {bg:"#00BFF3",captionPlate:"#0047AE",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FF2795",accent2:"#FFE000"},
   {bg:"#FF6A00",captionPlate:"#FFE2B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#00D7F5",accent2:"#F50083"},
   {bg:"#B8F500",captionPlate:"#F0FFA2",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#693BFF",accent2:"#FF278A"},
   {bg:"#762BFF",captionPlate:"#4A13BF",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#00E5C0",accent2:"#FF3D9A"},
   {bg:"#FF3D27",captionPlate:"#FFE2B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#FFE000",accent2:"#00C7FF"},
-  {bg:"#00B989",captionPlate:"#006A55",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#FF2B91",accent2:"#2580FF"},
+  {bg:"#00B989",captionPlate:"#005641",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#FF2B91",accent2:"#2580FF"},
   {bg:"#165CFF",captionPlate:"#0639B4",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#FF2B91",accent2:"#00E5C0"},
   {bg:"#F500A3",captionPlate:"#AC006F",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#00D8FF",accent2:"#B8F500"},
   {bg:"#FFB000",captionPlate:"#FFF0B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#F00085",accent2:"#00BFF3"},
@@ -367,7 +367,7 @@ async function verifyVideoDuration(blob,expected){
 }
 async function renderLocally(){
  const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),file=state.reference;
- if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");
+ if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");\n if(!hook)throw Error("Her Shorts için üstte görünecek kanca yazısını gir.");
  const Audio=window.AudioContext||window.webkitAudioContext;
  if(!Audio||!HTMLCanvasElement.prototype.captureStream||!window.MediaRecorder)throw Error("Safari bu iPhone'da yerel video üretimini desteklemiyor.");
  const mime=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4"].find(x=>MediaRecorder.isTypeSupported(x));
@@ -394,9 +394,9 @@ async function renderLocally(){
  let recorder;try{recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:quality==="720"?3800000:7000000,audioBitsPerSecond:192000});}
  catch(e){canvas.remove();throw Error("iPhone MP4 kodlayıcısı başlatılamadı: "+e.message);}
  let wakeLock=null;try{if(navigator.wakeLock)wakeLock=await navigator.wakeLock.request("screen");}catch{}
- let raf=0,stopped=false,startedAt=0,finishTimer=0,settled=false;
+ let raf=0,stopped=false,startedAt=0,finishTimer=0,finishDelay=0,settled=false;
  const stopTracks=()=>stream.getTracks().forEach(t=>t.stop());
- const cleanup=async()=>{cancelAnimationFrame(raf);clearTimeout(finishTimer);stopTracks();canvas.remove();ownImages.forEach(x=>revoke(x.url));try{if(wakeLock)await wakeLock.release();}catch{}try{await audioContext.close();}catch{}};
+ const cleanup=async()=>{cancelAnimationFrame(raf);clearTimeout(finishTimer);clearTimeout(finishDelay);stopTracks();canvas.remove();ownImages.forEach(x=>revoke(x.url));try{if(wakeLock)await wakeLock.release();}catch{}try{await audioContext.close();}catch{}};
  const result=new Promise((resolve,reject)=>{
   const fail=error=>{if(settled)return;settled=true;stopped=true;cancelAnimationFrame(raf);clearTimeout(finishTimer);if(recorder.state!=="inactive")try{recorder.stop();}catch{};reject(error);};
   const finish=()=>{if(stopped)return;stopped=true;cancelAnimationFrame(raf);clearTimeout(finishTimer);if(recorder.state==="recording")recorder.stop();};
@@ -404,7 +404,7 @@ async function renderLocally(){
   const chunks=[];
   recorder.onerror=()=>fail(Error("Safari MP4 kodlama işlemini durdurdu."));
   recorder.onstop=()=>{stopTracks();if(settled)return;const blob=new Blob(chunks,{type:recorder.mimeType||mime});if(blob.size<80000)fail(Error("MP4 kaydı boş veya eksik. Kaliteyi 720p yapıp yeniden dene."));else{settled=true;resolve(blob);}};
-  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);setProgress(96);finish();};
+  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);setProgress(96);finishDelay=setTimeout(finish,350);};
   try{recorder.start();}catch(e){fail(Error("Safari kayıt başlatamadı: "+e.message));return;}
   startedAt=audioContext.currentTime;
   finishTimer=setTimeout(()=>{if(!stopped)fail(Error("Sesin tamamı çalınmadan render zaman aşımına uğradı. Safari'yi önde tut ve 720p ile tekrar dene."));},Math.ceil(clean.duration*1000)+18000);
@@ -413,7 +413,7 @@ async function renderLocally(){
    const elapsed=Math.min(clean.duration,Math.max(0,audioContext.currentTime-startedAt));
    drawFrame(ctx,w,h,elapsed,clean.duration,timeline,assets,title,styles,hook);
    setProgress(30+Math.round(62*elapsed/clean.duration));
-   if(elapsed>=clean.duration-.025)finish();else raf=requestAnimationFrame(frame);
+   if(elapsed<clean.duration-.02)raf=requestAnimationFrame(frame);
   };
   drawFrame(ctx,w,h,0,clean.duration,timeline,assets,title,styles,hook);
   raf=requestAnimationFrame(frame);source.start();
@@ -439,7 +439,7 @@ async function run(){
  $("#renderPanel").classList.remove("hidden");$("#renderResult").classList.add("hidden");setProgress(1);
  try{await renderLocally();button.textContent="Video hazırlandı";}
  catch(e){setText("#renderStatus","Üretim durdu: "+e.message);button.textContent="Tekrar dene · iPhone'da Shorts üret";}
- finally{state.rendering=false;button.disabled=!(state.reference&&$("#scriptText").value.trim());}
+ finally{state.rendering=false;button.disabled=!(state.reference&&$("#scriptText").value.trim()&&$("#hookText").value.trim());}
 }
 function download(url,name){if(!url)return;const a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();}
 function init(){
@@ -449,7 +449,7 @@ function init(){
  $("#downloadCleanAudio").onclick=()=>download(state.audioUrl,"shorts-cleaned-voice.wav");
  $("#downloadCredits").onclick=()=>download(state.creditsUrl,"sources-and-licenses.txt");
  $("#visualFiles").onchange=async e=>{state.visualFiles=Array.from(e.target.files||[]).slice(0,8);setText("#visualStatus",state.visualFiles.length+" referans görsel seçildi. İnternet görselleri her sahne için ayrıca aranacak.");};
- $("#scriptText").addEventListener("input",capabilities);$("#localQuality").addEventListener("change",capabilities);
+ $("#scriptText").addEventListener("input",capabilities);$("#hookText").addEventListener("input",capabilities);$("#localQuality").addEventListener("change",capabilities);
  capabilities();
  const status=$("#recordStatus");if(status&&window.MutationObserver)new MutationObserver(capabilities).observe(status,{childList:true,subtree:true,characterData:true});
  $("#audioFile").addEventListener("change",()=>setTimeout(capabilities,50));
