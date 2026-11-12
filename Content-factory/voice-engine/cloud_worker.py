@@ -49,7 +49,10 @@ def render(job_id):
    with gateway.JOBS_LOCK:snapshot=dict(gateway.JOBS.get(current_id,{}))
    if snapshot:
     allowed=("status","progress","message","error","duration","removed_silence","scene_count","source_count")
-    update_status(job_id,**{k:snapshot[k] for k in allowed if k in snapshot})
+    cloud_state={k:snapshot[k] for k in allowed if k in snapshot}
+    if cloud_state.get("status")=="completed":
+     cloud_state.update({"status":"uploading","progress":96,"message":"MP4 ve kaynak dosyaları geçici depolamaya aktarılıyor."})
+    update_status(job_id,**cloud_state)
   gateway.update_job=persistent_update
   try:gateway.render_short_job(job_id)
   finally:gateway.update_job=original_update
