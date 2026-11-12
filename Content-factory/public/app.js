@@ -36,5 +36,6 @@ $("#regenerateVoice").onclick=generatePreview;
 $("#approveVoice").onclick=approveAndRender;
 $("#downloadVideo").onclick=()=>{if(state.videoUrl){const a=document.createElement("a");a.href=state.videoUrl;a.download=(($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_"))+".mp4";a.click()}};
 $("#downloadCleanAudio").onclick=()=>{if(state.audioUrl){const a=document.createElement("a");a.href=state.audioUrl;a.download="shorts-cleaned-voice.wav";a.click()}};
-$("#downloadCredits").onclick=()=>{if(state.creditsUrl){const a=document.createElement("a");a.href=state.creditsUrl;a.download="sources-and-licenses.txt";a.click()}};\n$("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · hedef 40–45 saniye";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
+$("#downloadCredits").onclick=()=>{if(state.creditsUrl){const a=document.createElement("a");a.href=state.creditsUrl;a.download="sources-and-licenses.txt";a.click()}};
+$("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · hedef 40–45 saniye";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
 $("#engineUrl").value=localStorage.getItem("cf-engine-url")||"";$("#engineToken").value=localStorage.getItem("cf-engine-token")||"";loadReference();renderHistory();
