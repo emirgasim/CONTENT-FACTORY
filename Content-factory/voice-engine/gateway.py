@@ -659,6 +659,15 @@ async def agent_registry(_auth: None = Depends(require_access)) -> dict[str, Any
         "tools": sorted(AGENT_TOOLS.keys()),
     }
 
+@app.get("/api/agent/skills/{skill_id}")
+async def agent_skill(skill_id: str, _auth: None = Depends(require_access)) -> dict[str, Any]:
+    if not re.fullmatch(r"yt-[a-z-]+", skill_id):
+        raise HTTPException(status_code=400, detail="Geçersiz uzmanlık kimliği.")
+    skill_path = AGENT_DIR / "skills" / (skill_id + ".md")
+    if not skill_path.is_file():
+        raise HTTPException(status_code=404, detail="Uzmanlık kılavuzu bulunamadı.")
+    return {"id": skill_id, "content": skill_path.read_text(encoding="utf-8")}
+
 @app.post("/api/agent/run")
 async def agent_run(request: Request, _auth: None = Depends(require_access)) -> dict[str, Any]:
     try:
