@@ -7,7 +7,7 @@ const setText=(selector,value)=>{const el=$(selector);if(el)el.textContent=value
 const setProgress=value=>{const el=$("#renderProgress");if(el)el.style.width=Math.max(0,Math.min(100,value))+"%";};
 const revoke=url=>{if(url)URL.revokeObjectURL(url);};
 const COMMONS="https://commons.wikimedia.org/w/api.php";
-const STOP=new Set("ve veya ama fakat çünkü gibi için ile bir bu şu o da de ki ne mi mı mu mü daha çok az her bazı nasıl neden niçin zaman olan olarak sonra önce kadar göre ise hem ya yani diye tüm bütün çok şey yeni eski ilk son gerçekten aslında video görüntü dünya yıllar yılında".split(" "));
+const STOP=new Set("ve veya ama fakat çünkü gibi için ile bir bu şu o da de ki ne mi mı mu mü daha çok az her bazı nasıl neden niçin zaman olan olarak sonra önce kadar göre ise hem ya yani diye tüm bütün çok şey yeni eski ilk son gerçekten aslında video görüntü dünya yıllar yılında milyonlarca kişi gördü görmüş görür oldu dönen dönən yıllarca aslında gerçek ana".split(" "));
 let lastRunSeed=0;
 
 function capabilities(){
@@ -155,7 +155,7 @@ function extractSearchTerms(text,title){
   "uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog",
   "bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned",
   "ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes",
-  "manzara":"landscape scenery","şehir":"city skyline","köprü":"bridge","uçak":"airplane","araba":"car",
+  "manzara":"landscape scenery","manzarayı":"landscape scenery","manzarada":"landscape scenery","manzaranın":"landscape scenery","bulanık":"blurry image","gördü":"viewed","oyunun":"video game","oyununda":"video game","menüsünde":"video game menu","dünyasından":"virtual world","şehir":"city skyline","köprü":"bridge","uçak":"airplane","araba":"car",
   "okul":"school","çizgi":"cartoon animation","oyuncak":"toy","fabrika":"factory","telefon":"mobile phone",
   "internet":"internet technology","robot":"robot","korku":"horror","canavar":"monster","hayalet":"ghost",
   "göz":"eye closeup","kalp":"heart anatomy","beyin":"human brain","deney":"science experiment",
