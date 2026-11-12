@@ -12,7 +12,11 @@ WORKDIR /app
 COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /app/environment.yml
 RUN micromamba env create -f /app/environment.yml
 
-RUN git clone --depth 1 https://github.com/OpenMOSS/MOSS-TTS-Nano.git /opt/moss
+ARG MOSS_COMMIT=8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb
+RUN git init /opt/moss && cd /opt/moss \\
+    && git remote add origin https://github.com/OpenMOSS/MOSS-TTS-Nano.git \\
+    && git fetch --depth 1 origin $MOSS_COMMIT \\
+    && git checkout FETCH_HEAD
 RUN micromamba run -n content-factory pip install --no-cache-dir -r /opt/moss/requirements.txt \
     && micromamba run -n content-factory pip install --no-cache-dir -e /opt/moss \
     && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx
