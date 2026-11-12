@@ -30,16 +30,16 @@
 
 <div class="panel">
 <div class="step-label"><span>02</span><div><div class="eyebrow">RECORD YOUR VOICE</div><h3>iPhone mikrofonuyla sesini kaydet</h3></div></div>
-<p class="muted">Dosya seçmene gerek yok. Kaydı doğrudan tarayıcıdan alacağız. Kendi sesin için 15–30 saniye doğal konuş; bu kayıt yalnızca bu Shorts'un seslendirme örneğini üretmekte kullanılacak.</p>
+<p class="muted">Dosya seçmene gerek yok. Kaydı doğrudan tarayıcıdan alacağız. Metni baştan sona kendi sesinle oku. Kayıt doğrudan bu Shorts'un anlatımı olacak; ayrıca ses dosyası yüklemeyeceksin.</p>
 <div class="record-console"><div class="record-indicator" id="recordIndicator"><span></span><b id="recordState">Kayıt hazır</b><strong id="recordTimer">00:00</strong></div><div class="record-actions"><button id="startRecording" class="btn btn-primary">● Kayda başla</button><button id="stopRecording" class="btn btn-dark" disabled>Kaydı bitir</button><button id="redoRecording" class="btn btn-ghost" disabled>Yeniden kaydet</button></div></div>
 <div id="recordStatus" class="media-info">Mikrofon izni istendiğinde izin ver.</div>
 <audio id="referencePreview" controls class="audio-preview hidden"></audio>
 </div>
 
 <div class="panel">
-<div class="step-label"><span>03</span><div><div class="eyebrow">VOICE PREVIEW</div><h3>Önce seslendirme örneğini dinle</h3></div></div>
-<p class="muted">Kendi kaydını referans alan ses örneği hazırlanır. Beğenmezsen metni değiştirip yeniden örnek oluşturabilirsin. Henüz onaylamadan görsel render başlamaz.</p>
-<button id="generatePreview" class="btn btn-primary btn-wide">Kaydımdan ses örneği oluştur</button>
+<div class="step-label"><span>03</span><div><div class="eyebrow">VOICE PREVIEW</div><h3>Kaydını dinle ve onayla</h3></div></div>
+<p class="muted">Bu adım kaydını tekrar dinletir. Onayından sonra sistem uzun duraklamaları kısaltıp görsellerle MP4 oluşturur.</p>
+<button id="generatePreview" class="btn btn-primary btn-wide">Kaydımı dinle</button>
 <div id="previewStatus" class="media-info">Metni ve ses profilini hazırla.</div>
 <audio id="previewAudio" controls class="audio-preview hidden"></audio>
 <div class="action-row"><button id="approveVoice" class="btn btn-dark" disabled>Sesi onayla ve videoyu hazırla</button><button id="regenerateVoice" class="btn btn-ghost" disabled>Yeniden seslendir</button></div>
