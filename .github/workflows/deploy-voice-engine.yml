@@ -1,0 +1,35 @@
+name: Deploy Content Factory Voice Engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Content-factory/voice-engine/**"
+      - ".github/workflows/deploy-voice-engine.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.HF_TOKEN != '' && secrets.HF_SPACE_ID != '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Prepare Hugging Face Space repository
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/hf-space
+          cp -R Content-factory/voice-engine/. /tmp/hf-space/
+          cd /tmp/hf-space
+          git init -b main
+          git config user.name "content-factory-deployer"
+          git config user.email "actions@users.noreply.github.com"
+          git add .
+          git commit -m "Deploy Content Factory Voice Engine"
+          git remote add hf "https://huggingface.co/spaces/${HF_SPACE_ID}"
+          git config --global credential.helper store
+          printf "https://__token__:%s@huggingface.co\n" "$HF_TOKEN" > "$HOME/.git-credentials"
+          chmod 600 "$HOME/.git-credentials"
+          git push --force hf main
