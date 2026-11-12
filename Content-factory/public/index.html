@@ -16,7 +16,20 @@
 <div class="action-row"><button id="saveEngine" class="btn btn-primary">Bağlantıyı kaydet</button><button id="checkEngine" class="btn btn-ghost">Bağlantıyı test et</button><span id="engineStatus" class="muted">Henüz motor adresi girilmedi.</span></div>
 </section>
 
-<section class="mode-grid"><button class="mode-card yellow" id="startShorts"><span class="mode-icon">↗</span><b>SHORTS FACTORY</b><small>Metin · Kendi sesin · Örnek · Otomatik kurgu</small><span class="mode-cta">YENİ SHORTS HAZIRLA ↗</span></button></section>
+<section id="agentHub" class="panel agent-hub">
+<div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div><span id="agentStatus" class="muted">Motor adresi girildiğinde bağlanır</span></div>
+<p class="muted">11 uzmanlık kılavuzu ve 6 yerel analiz aracı. Bu araçlar deterministik analiz yapar; araştırma ve senaryo kararlarını bu ChatGPT sohbetinde yönetebiliriz.</p>
+<div class="agent-skills" id="agentSkills"><span class="muted">Ajan listesi yükleniyor…</span></div>
+<div class="agent-tools">
+<h3>Çalıştırılabilir analiz araçları</h3>
+<label class="field-label" for="agentTool">Araç</label>
+<select id="agentTool">
+<option value="hookscore">Kanca puanla</option><option value="title">Başlık / kapak kontrolü</option><option value="deadair">SRT sessizlik / tekrar analizi</option><option value="chapters">SRT bölüm önerisi</option><option value="retention">İzleyici tutma CSV analizi</option><option value="viral">Viral video JSON kıyaslama</option>
+</select>
+<div id="agentFields"></div>
+<button id="runAgent" class="btn btn-primary btn-wide">Analiz aracını çalıştır</button>
+<pre id="agentOutput" class="agent-output hidden"></pre>
+</div></section>\n<section class="mode-grid"><button class="mode-card yellow" id="startShorts"><span class="mode-icon">↗</span><b>SHORTS FACTORY</b><small>Metin · Kendi sesin · Örnek · Otomatik kurgu</small><span class="mode-cta">YENİ SHORTS HAZIRLA ↗</span></button></section>
 
 <section id="editor" class="editor hidden">
 <div class="section-head"><div><div class="eyebrow">ONE SHORT AT A TIME</div><h2>Shorts üretim masası</h2></div><button id="closeEditor" class="btn btn-ghost">Kapat</button></div>
