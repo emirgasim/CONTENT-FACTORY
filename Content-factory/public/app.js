@@ -15,7 +15,7 @@ function resetResult(){revoke(state.videoUrl);revoke(state.audioUrl);revoke(stat
 function openShorts(){resetResult();$("#editor").classList.remove("hidden");$("#editor").scrollIntoView({behavior:"smooth"})}
 function saveEngine(){localStorage.setItem("cf-engine-url",$("#engineUrl").value.trim());localStorage.setItem("cf-engine-token",$("#engineToken").value.trim());setStatus("#engineStatus","Motor bağlantı ayarları kaydedildi.")}
 async function checkEngine(){const base=engineUrl();if(!base){setStatus("#engineStatus","Önce servis adresini gir.");return}setStatus("#engineStatus","Bağlantı kontrol ediliyor…");try{const r=await fetch(base+"/health",{headers:headers()});const j=await r.json();if(!r.ok)throw Error(j.detail||j.error||r.status);if(j.video_renderer!==true)throw Error("Servise ulaşıldı ancak FFmpeg video motoru çalışmıyor.");setStatus("#engineStatus","Bağlantı başarılı · MP4 motoru hazır.")}catch(e){setStatus("#engineStatus","Bağlantı kurulamadı: "+e.message)}}
-function loadReference(){const ok=!!state.reference;$("#recordStatus").textContent=ok?"Ses hazır. "+(state.reference.size/1024/1024).toFixed(2)+" MB":"Henüz ses kaydı veya dosya seçilmedi.";$("#startRender").disabled=!ok||!$("#scriptText").value.trim()}
+function loadReference(){const ok=!!state.reference;const scriptReady=!!$("#scriptText").value.trim();$("#recordStatus").textContent=!ok?"Henüz mikrofon kaydı veya ses dosyası seçilmedi.":scriptReady?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";$("#startRender").disabled=!ok||!scriptReady}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function fetchBlob(path){const r=await fetch(engineUrl()+path,{headers:headers()});if(!r.ok){let message="Dosya indirilemedi ("+r.status+")";try{const j=await r.json();message=j.detail||j.error||message}catch{}throw Error(message)}return await r.blob()}
 async function approveAndRender(){
@@ -67,7 +67,7 @@ $("#saveEngine").onclick=saveEngine;$("#checkEngine").onclick=checkEngine;
 $("#startShorts").onclick=openShorts;
 $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 
-$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · hedef 40–45 saniye";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()};
+$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · hedef 40–45 saniye";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#scriptText").value.trim()?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";};
 $("#clearScript").onclick=()=>{$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · hedef 40–45 saniye";resetResult()};
 $("#startRender").onclick=approveAndRender;
 $("#downloadVideo").onclick=()=>{if(state.videoUrl){const a=document.createElement("a");a.href=state.videoUrl;a.download=(($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_"))+".mp4";a.click()}};
