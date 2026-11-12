@@ -57,3 +57,14 @@
 .skill-prompt .field-label{display:block;margin:0 0 8px;font:10px 'DM Mono';color:var(--aqua);letter-spacing:.08em}
 .skill-prompt textarea{min-height:250px;resize:vertical;margin-bottom:10px;font:12px/1.55 ui-monospace,monospace}
 @media(max-width:760px){.agent-skills{grid-template-columns:repeat(2,minmax(0,1fr))}.skill-workspace{padding:14px}.skill-inputs{grid-template-columns:1fr}.skill-workspace-head h3{font-size:19px}.result-line{grid-template-columns:1fr;gap:3px}.result-line b{font-size:11px}}
+
+/* iPhone-local render controls */
+#visualFiles{min-height:44px;padding:9px}
+#localCapability{border:1px solid var(--line);border-radius:8px;padding:10px;background:#11131c}
+#renderPanel{overflow:hidden}
+#finalVideo{width:100%;max-height:72vh;object-fit:contain;background:#050505;border-radius:12px}
+@media(max-width:700px){
+ .shell{padding:0 14px}.topbar{height:66px}.hero{padding:35px 0 26px}.hero-sticker{width:100px;height:100px}
+ .hero-sticker strong{font-size:21px}.hero-sticker span,.hero-sticker small{font-size:7px}
+ .panel{padding:15px}.mode-grid{grid-template-columns:1fr}.mode-card{min-height:150px}
+}
