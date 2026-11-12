@@ -31,3 +31,5 @@ jobs:
           test -s Content-factory/public/style.css
           test -s Content-factory/voice-engine/Dockerfile
           test -s Content-factory/voice-engine/start.sh
+          test -s Content-factory/agent/registry.json
+          test -s Content-factory/agent/README.md
