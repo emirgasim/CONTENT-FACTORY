@@ -4,37 +4,35 @@ The Shorts Factory produces vertical MP4 directly in iPhone Safari. No render se
 
 ## Production flow
 
-1. Paste narration text and select/record the matching audio.
-2. Optionally add up to eight of your own visual reference images.
-3. The browser analyzes the complete audio waveform. Long low-volume pauses may be removed conservatively; if estimated cuts exceed 7% of the recording, the entire original audio is preserved to avoid cutting speech.
-4. The script is split into short visual beats. For every beat, the renderer searches Wikimedia Commons for image files and reads each file's license metadata.
-5. Only CC0, public-domain, CC BY and CC BY-SA results are selected. NC and ND files are rejected. If no suitable image loads, the scene uses original graphic/pixel artwork.
-6. Each scene is placed in a centered square visual frame with a unique, randomly generated bright background composition. Layout, colors, shapes and motion vary per render and per scene.
-7. Canvas animation and cleaned narration are recorded locally through Safari MediaRecorder as MP4. The resulting video metadata is checked against expected audio duration before download is enabled.
+1. Enter the topic, a required manual hook, the narration text and matching audio.
+2. Optionally add up to eight of your own image references.
+3. The browser analyzes the complete audio waveform conservatively. It preserves the original recording if silence removal would remove more than 7% or 3.5 seconds.
+4. The script is split into visual beats. The renderer searches Wikimedia Commons per scene, prioritizing the topic title and adding Turkish-to-English keyword aliases.
+5. Only CC0, public-domain, CC BY and CC BY-SA images are selected; NC and ND files are rejected. Each scene tries multiple search queries and avoids reusing the same image URL within one render.
+6. Each scene has a randomly selected, vivid solid color palette with opaque cartoon-style geometric animation. Gradients are not used.
+7. The central visual remains in a consistent square frame. The manual hook appears in a banner at the top. Captions have no outline; light caption plates use black text and saturated plates use white text.
+8. A duration bar uses the audio playback clock and reaches 100% only on the final audio frame. MP4 metadata is checked against the full cleaned narration duration before the file is shown as complete.
+9. Preview and save the MP4, cleaned WAV and source/license report.
 
 ## Source and license handling
 
-- Commons is queried through its public MediaWiki Action API with CORS (origin=*), image information and extended license metadata.
-- Each selected file's author, license, license URL and Commons file page are written to sources-and-licenses.txt.
+- Commons is queried through its public MediaWiki Action API with CORS, image information, thumbnails and extended license metadata.
+- CC0, Public Domain, CC BY and CC BY-SA are accepted. NonCommercial and NoDerivatives variants are excluded.
+- Each selected file's author, license, license URL and Commons file page are written to the source/license report.
 - Wikimedia Commons licensing guidance: https://commons.wikimedia.org/wiki/Commons:Licensing
-- CC BY and CC BY-SA permit commercial reuse subject to attribution; BY-SA has share-alike requirements. The user must follow each file's specific license and check any non-copyright restrictions.
-- Internet image search depends on network availability. If Commons is unavailable or no eligible image loads, the renderer uses original graphics and records that fallback; it does not silently use unlicensed images.
+- CC BY and CC BY-SA require attribution. CC BY-SA includes a share-alike condition; follow each selected file's specific terms.
+- Stock-image matching depends on the public Commons search index and available license metadata. If an eligible image cannot be found or fetched, the renderer records the fallback and uses original graphic art rather than claiming an image was found.
 
 ## iPhone render constraints
 
 - Output: 1080 × 1920 at 24 fps by default, with a 720 × 1280 lower-memory option.
-- The browser checks for MediaRecorder MP4 support before starting. It does not rename WebM to MP4.
-- Keep Safari in the foreground while rendering. iOS can suspend background tabs and browser media tasks.
-- The app checks the actual generated MP4 duration against the cleaned narration duration. Incomplete output is rejected instead of presented as finished.
-- Browser memory, device temperature, battery and Safari's hardware encoder remain practical limits. No credits means no per-video billing, not unlimited device processing.
-- Text-to-audio timing is currently distributed over the cleaned narration based on word count. It is not word-level forced alignment or on-device speech recognition.
-
-## Agent Hub
-
-The separate YouTube Agent Hub remains a set of deterministic in-panel analysis tools and ChatGPT task briefs. It is not required for video rendering.
+- Browser must report MediaRecorder MP4 support; the app does not rename WebM to MP4.
+- Keep Safari in the foreground. iOS may suspend background tabs and media work.
+- Browser memory, battery, thermal throttling and hardware encoder limits still apply. No credits means no per-video billing, not unlimited device resources.
+- Script-to-audio scene timing is approximate, distributed by word count. This build does not perform word-level forced alignment or local speech recognition.
 
 ## Privacy
 
-- Scripts, selected audio and personal images remain in browser memory for the local render path.
-- Commons image searches send the scene's extracted topic/search words to Wikimedia Commons, not the audio file.
-- GitHub stores application source code only; never commit audio, generated videos or secrets.
+- Script, audio and user-selected images remain in browser memory for local rendering.
+- Commons requests send scene/topic search terms, not narration audio.
+- GitHub stores source code only; do not commit audio, generated videos or secrets.
