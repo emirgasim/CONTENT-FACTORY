@@ -107,18 +107,17 @@ function agentFields(){
 }
 async function loadAgentHub(){
  const root=$("#agentSkills");root.innerHTML="";
- AGENT_SKILLS.forEach(([id,label])=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=label;b.title=id;b.onclick=()=>{const prompt="YouTube Agent görevi: "+label+" ("+id+"). Bu uzmanlık talimatını uygula. Gerekli girdilerimi sor ve sonucu doğrulama notlarıyla hazırla.";fetch(engineUrl()+"/api/agent/skills/"+id,{headers:headers()}).then(r=>r.ok?r.json():Promise.reject(Error("Kılavuz alınamadı"))).then(d=>navigator.clipboard.writeText(prompt+"\\n\\nUZMANLIK TALİMATI:\\n"+d.content)).then(()=>setStatus("#agentStatus","Uzmanlık talimatı ChatGPT için kopyalandı: "+label)).catch(()=>setStatus("#agentStatus","Önce video motoru bağlantısını kur; sonra talimatı kopyalayabilirsin."));};root.append(b)});
+ AGENT_SKILLS.forEach(([id,label])=>{const b=document.createElement("button");b.className="agent-skill";b.textContent=label;b.title=id;b.onclick=async()=>{const prompt="YouTube Agent görevi: "+label+" ("+id+"). Bu uzman rolünü uygula. Önce gerekli girdileri sor; sonra sonucu, varsayımlarını ve doğrulama notlarını sun. Claude veya harici API kullanma.";try{await navigator.clipboard.writeText(prompt);setStatus("#agentStatus","ChatGPT'ye aktarılacak görev kopyalandı: "+label)}catch{setStatus("#agentStatus",prompt)}};root.append(b)});
  agentFields();
- const base=engineUrl();if(!base){setStatus("#agentStatus","Video motoru bağlantısı yapılınca ajan araçları etkinleşir.");return}
- try{const r=await fetch(base+"/api/agent/registry",{headers:headers()});if(!r.ok)throw Error("HTTP "+r.status);const data=await r.json();setStatus("#agentStatus",data.skills.length+" uzmanlık · "+data.tools.length+" araç bulundu.")}catch(e){setStatus("#agentStatus","Ajan servisi bağlanamadı: "+e.message)}
+ try{const r=await fetch("/api/agent/registry");if(!r.ok)throw Error("HTTP "+r.status);const data=await r.json();setStatus("#agentStatus",data.skills.length+" uzmanlık · "+data.tools.length+" ücretsiz analiz aracı · Cloudflare üzerinde");}
+ catch(e){setStatus("#agentStatus","Ajan listesi yüklenemedi: "+e.message)}
 }
 async function runAgentTool(){
  const tool=$("#agentTool").value,params={};
  const keys={hookscore:["hook"],title:["title","thumb"],deadair:["srt","floor"],chapters:["srt","target"],retention:["csv","duration"],viral:["json"]}[tool];
  keys.forEach(k=>{const el=$("#agent-"+k);if(el)params[k]=el.value.trim()});
  const output=$("#agentOutput"),button=$("#runAgent");
- if(!engineUrl()){setStatus("#agentStatus","Önce Video motoru bölümünden servis adresini kaydet.");return}
- button.disabled=true;button.textContent="Analiz ediliyor…";output.classList.remove("hidden");output.textContent="Ajan aracı çalıştırılıyor…";
- try{const r=await fetch(engineUrl()+"/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json",...headers()},body:JSON.stringify({tool,params})});const data=await r.json();if(!r.ok)throw Error(data.detail||"Araç çalıştırılamadı.");output.textContent=JSON.stringify(data.result,null,2);setStatus("#agentStatus","Analiz tamamlandı · "+tool)}catch(e){output.textContent="Hata: "+e.message;setStatus("#agentStatus","Analiz tamamlanamadı")}finally{button.disabled=false;button.textContent="Analiz aracını çalıştır"}
+ button.disabled=true;button.textContent="Analiz ediliyor…";output.classList.remove("hidden");output.textContent="Cloudflare ücretsiz analiz aracı çalıştırılıyor…";
+ try{const r=await fetch("/api/agent/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tool,params})});const data=await r.json();if(!r.ok)throw Error(data.detail||"Araç çalıştırılamadı.");output.textContent=JSON.stringify(data.result,null,2);setStatus("#agentStatus","Analiz tamamlandı · "+tool+" · Ücretsiz Cloudflare endpoint")}catch(e){output.textContent="Hata: "+e.message;setStatus("#agentStatus","Analiz tamamlanamadı")}finally{button.disabled=false;button.textContent="Analiz aracını çalıştır"}
 }
 $("#agentTool").addEventListener("change",agentFields);$("#runAgent").addEventListener("click",runAgentTool);loadAgentHub();
