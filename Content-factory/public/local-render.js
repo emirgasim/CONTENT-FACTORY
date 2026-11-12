@@ -121,47 +121,79 @@ function linesFor(ctx,text,maxWidth,maxLines) {
 }
 function drawFrame(ctx,w,h,time,duration,timeline,images,title) {
   const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
-  const colors=[["#111827","#F7E34A"],["#17112B","#D9A5F5"],["#0D2630","#FF9C69"],["#25200E","#94EB4B"],["#111827","#5677F5"]];
-  const pair=colors[scene.index%colors.length],pulse=.5+.5*Math.sin(time*2);
-  const gradient=ctx.createLinearGradient(0,0,w,h);
-  gradient.addColorStop(0,pair[0]);gradient.addColorStop(1,"#080A10");
-  ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);
+  const palettes=[
+    {bg:"#FFE500",ink:"#111111",accent:"#FF3D8D",soft:"#FFFFFF"},
+    {bg:"#00D9F5",ink:"#101020",accent:"#FF4E00",soft:"#FFFFFF"},
+    {bg:"#FF3B9D",ink:"#FFFFFF",accent:"#FFE500",soft:"#191225"},
+    {bg:"#FF6A00",ink:"#17100A",accent:"#B9FF00",soft:"#FFFFFF"},
+    {bg:"#B8F500",ink:"#101010",accent:"#6B39FF",soft:"#FFFFFF"},
+    {bg:"#6538FF",ink:"#FFFFFF",accent:"#00F0C8",soft:"#16102A"}
+  ];
+  const p=palettes[scene.index%palettes.length],phase=(time-scene.start)/Math.max(.01,scene.end-scene.start);
+  const pulse=.5+.5*Math.sin(time*3.2),drift=Math.sin(time*1.25)*w*.025;
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,w,h);
   const image=images.length?images[scene.index%images.length].img:null;
-  if(image) {
-    ctx.save();ctx.globalAlpha=.43;
-    const scale=Math.max(w/image.width,h/image.height)*(1.02+.035*pulse);
-    const iw=image.width*scale,ih=image.height*scale;
-    ctx.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih);ctx.restore();
-    ctx.fillStyle="rgba(5,7,14,.48)";ctx.fillRect(0,0,w,h);
+  if(image){
+    ctx.save();ctx.globalAlpha=.25;
+    const scale=Math.max(w/image.width,h/image.height)*(1.08+.035*pulse),iw=image.width*scale,ih=image.height*scale;
+    ctx.translate(drift,0);ctx.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih);ctx.restore();
   }
-  ctx.fillStyle=pair[1];ctx.fillRect(w*.07,h*.075,w*.16,8);
-  ctx.fillStyle="#FFFFFF";ctx.font="700 "+Math.round(w*.027)+"px system-ui";
-  ctx.fillText("CONTENT FACTORY",w*.07,h*.12);
-  ctx.fillStyle=pair[1];ctx.font="800 "+Math.round(w*.035)+"px system-ui";
-  ctx.fillText("SAHNE "+String(scene.index+1).padStart(2,"0"),w*.07,h*.19);
-  const caption=scene.caption,numeric=/\d/.test(caption),contrast=/karşı|fark|önce|sonra|vs\.?/i.test(caption);
-  if(numeric) {
-    const number=(caption.match(/\d+[.,]?\d*%?/g)||["?"])[0];
-    ctx.fillStyle=pair[1];ctx.font="900 "+Math.round(w*.23)+"px system-ui";
-    ctx.fillText(number,w*.07,h*.42);
-    ctx.fillStyle="#FFFFFF";ctx.font="800 "+Math.round(w*.052)+"px system-ui";
+  // Oversized graphic shapes create a distinct poster-like composition on every beat.
+  const layout=scene.index%5;
+  ctx.save();
+  if(layout===0){
+    ctx.fillStyle=p.accent;ctx.beginPath();ctx.arc(w*.88,h*.16,w*(.23+.018*pulse),0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=p.soft;ctx.save();ctx.translate(w*.78,h*.73);ctx.rotate(-.16+phase*.04);ctx.fillRect(-w*.52,-h*.025,w*.7,h*.05);ctx.restore();
+  } else if(layout===1){
+    ctx.fillStyle=p.accent;ctx.beginPath();ctx.moveTo(w*.68,0);ctx.lineTo(w,h*.0);ctx.lineTo(w,h*.58);ctx.lineTo(w*.46,h*.38);ctx.closePath();ctx.fill();
+    ctx.fillStyle=p.soft;ctx.fillRect(0,h*.73,w,h*.27);
+  } else if(layout===2){
+    ctx.fillStyle=p.accent;ctx.beginPath();ctx.arc(w*.18,h*.83,w*.32,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=p.soft;ctx.beginPath();ctx.arc(w*.83,h*.17,w*.14,0,Math.PI*2);ctx.fill();
+  } else if(layout===3){
+    ctx.fillStyle=p.accent;ctx.save();ctx.translate(w*.5,h*.5);ctx.rotate(-.14);ctx.fillRect(-w*.62,-h*.13,w*1.24,h*.26);ctx.restore();
   } else {
-    ctx.fillStyle="#FFFFFF";ctx.font="900 "+Math.round(w*(contrast?.065:scene.index%3===0?.082:.071))+"px system-ui";
+    ctx.fillStyle=p.accent;ctx.beginPath();ctx.moveTo(0,h*.64);ctx.lineTo(w,h*.38);ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fill();
+    ctx.fillStyle=p.soft;ctx.beginPath();ctx.arc(w*.82,h*.2,w*.12,0,Math.PI*2);ctx.fill();
   }
-  const headline=linesFor(ctx,caption,w*.84,5);let y=h*.43;
-  for(const line of headline){ctx.fillText(line,w*.07,y);y+=Math.round(w*.095);}
-  if(contrast) {
-    rounded(ctx,w*.07,h*.68,w*.86,h*.075,18,pair[1]);
-    ctx.fillStyle="#10121A";ctx.font="800 "+Math.round(w*.033)+"px system-ui";
-    ctx.fillText("DETAYLARA DİKKAT",w*.11,h*.728);
+  ctx.restore();
+
+  const caption=scene.caption.trim();
+  const hasNumber=/\d/.test(caption),isQuestion=/\?|neden|nasıl|gerçek|sır|gizli/i.test(caption);
+  const words=caption.split(/\s+/);
+  const maxWidth=w*.82;
+  const fontSize=Math.round(w*(words.length<6?.102:words.length<10?.086:.073));
+  ctx.fillStyle=p.ink;
+  ctx.font="900 "+fontSize+"px system-ui, -apple-system, sans-serif";
+  ctx.textBaseline="middle";
+  let lines=linesFor(ctx,caption,maxWidth,6);
+  // Keep the headline visually dominant and fit it to the portrait canvas.
+  let size=fontSize;
+  while(lines.length>5&&size>w*.052){
+    size-=2;ctx.font="900 "+size+"px system-ui, -apple-system, sans-serif";
+    lines=linesFor(ctx,caption,maxWidth,6);
   }
-  rounded(ctx,w*.055,h*.79,w*.89,h*.115,18,"rgba(7,9,15,.9)");
-  ctx.fillStyle=pair[1];ctx.font="800 "+Math.round(w*.04)+"px system-ui";
-  linesFor(ctx,caption,w*.79,2).forEach((line,i)=>ctx.fillText(line,w*.09,h*.845+i*w*.05));
-  rounded(ctx,w*.07,h*.94,w*.86,7,4,"rgba(255,255,255,.22)");
-  rounded(ctx,w*.07,h*.94,w*.86*Math.min(1,time/duration),7,4,pair[1]);
-  ctx.fillStyle="#FFFFFF";ctx.font="600 "+Math.round(w*.024)+"px system-ui";
-  ctx.fillText(title.slice(0,34),w*.07,h*.975);
+  const lineHeight=size*1.12,totalHeight=lines.length*lineHeight;
+  let startY=Math.max(h*.28,Math.min(h*.54,(h-totalHeight)*.48));
+  if(layout===1)startY=h*.34;
+  if(layout===3)startY=h*.39;
+  lines.forEach((line,i)=>ctx.fillText(line,w*.085,startY+i*lineHeight));
+
+  // A single punchy visual cue, not repeated micro-labels or duplicated subtitles.
+  if(hasNumber){
+    const number=(caption.match(/\d+[.,]?\d*%?/g)||[])[0];
+    ctx.save();ctx.fillStyle=p.accent;ctx.font="900 "+Math.round(w*.12)+"px system-ui";
+    ctx.textAlign="right";ctx.fillText(number,w*.91,h*.87);ctx.restore();
+  } else if(isQuestion){
+    ctx.save();ctx.fillStyle=p.accent;ctx.font="900 "+Math.round(w*.19)+"px system-ui";
+    ctx.fillText("?",w*.08,h*.88);ctx.restore();
+  } else {
+    ctx.save();ctx.fillStyle=p.ink;ctx.globalAlpha=.85;
+    ctx.beginPath();ctx.arc(w*.89,h*.88,w*.045*(.8+pulse*.2),0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+  // Minimal progress indicator only; no unrelated channel labels or repeated caption strip.
+  ctx.fillStyle="rgba(0,0,0,.22)";ctx.fillRect(0,h*.985,w,h*.015);
+  ctx.fillStyle=p.ink;ctx.fillRect(0,h*.985,w*Math.min(1,time/duration),h*.015);
 }
 async function renderLocally() {
   const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",file=state.reference;
