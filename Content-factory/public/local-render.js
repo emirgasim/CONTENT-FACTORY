@@ -81,19 +81,31 @@ function makeRng(seed){let x=seed>>>0;return()=>{x+=0x6D2B79F5;let t=x;t=Math.im
 function randomSeed(){const a=new Uint32Array(1);if(window.crypto?.getRandomValues)crypto.getRandomValues(a);else a[0]=Math.floor(Math.random()*4294967295);return a[0]||Date.now()>>>0;}
 function hsl(h,s,l){return "hsl("+Math.round((h%360+360)%360)+" "+Math.round(s)+"% "+Math.round(l)+"%)";}
 function makeSceneStyles(count,seed){
- const rnd=makeRng(seed),styles=[];let previousLayout=-1,previousHue=-1;
+ const rnd=makeRng(seed),styles=[];
+ const themes=[
+  {bg:"#FFE600",captionPlate:"#FFF4A8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#FF2492",accent2:"#00A8FF"},
+  {bg:"#FF2694",captionPlate:"#C50068",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FFE000",accent2:"#00D7F5"},
+  {bg:"#00BFF3",captionPlate:"#0053C7",captionText:"#FFFFFF",hookPlate:"#FFF36A",hookText:"#101018",accent:"#FF2795",accent2:"#FFE000"},
+  {bg:"#FF6A00",captionPlate:"#FFE2B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#00D7F5",accent2:"#F50083"},
+  {bg:"#B8F500",captionPlate:"#F0FFA2",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#693BFF",accent2:"#FF278A"},
+  {bg:"#762BFF",captionPlate:"#4A13BF",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#00E5C0",accent2:"#FF3D9A"},
+  {bg:"#FF3D27",captionPlate:"#FFE2B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#FFE000",accent2:"#00C7FF"},
+  {bg:"#00B989",captionPlate:"#006A55",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#FF2B91",accent2:"#2580FF"},
+  {bg:"#165CFF",captionPlate:"#0639B4",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#FF2B91",accent2:"#00E5C0"},
+  {bg:"#F500A3",captionPlate:"#AC006F",captionText:"#FFFFFF",hookPlate:"#FFE600",hookText:"#101018",accent:"#00D8FF",accent2:"#B8F500"},
+  {bg:"#FFB000",captionPlate:"#FFF0B8",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#F00085",accent2:"#00BFF3"},
+  {bg:"#00D7D0",captionPlate:"#B4FFF5",captionText:"#101018",hookPlate:"#FFFFFF",hookText:"#101018",accent:"#FF2897",accent2:"#7138FF"}
+ ];
+ let previous=-1;
  for(let i=0;i<count;i++){
-  const hue=(rnd()*360)|0,layout=(rnd()*7)|0;
-  styles.push({
-   bg1:hsl(hue,92,55+rnd()*9),bg2:hsl(hue+35+rnd()*95,96,48+rnd()*10),
-   accent:hsl(hue+130+rnd()*150,98,56),accent2:hsl(hue+200+rnd()*125,94,58),
-   ink:rnd()>.45?"#101018":"#FFFFFF",paper:rnd()>.5?"#FFFFFF":"#11111A",
-   hue,layout:layout===previousLayout?(layout+1+(rnd()*5|0))%7:layout,
-   driftX:(rnd()-.5)*.12,driftY:(rnd()-.5)*.08,shapeSeed:rnd()*1000,
-   imageStyle:rnd()*4|0,sticker:rnd()>.5?"!":"✦",rotation:(rnd()-.5)*.25,
-   shapeCount:8+(rnd()*14|0),scale:.94+rnd()*.12
-  });
-  previousLayout=layout;previousHue=hue;
+  let index=Math.floor(rnd()*themes.length);
+  if(index===previous)index=(index+1+Math.floor(rnd()*(themes.length-1)))%themes.length;
+  const p=themes[index];
+  styles.push({...p,layout:Math.floor(rnd()*7),shapeSeed:rnd()*1000,
+   driftX:(rnd()-.5)*.1,driftY:(rnd()-.5)*.08,rotation:(rnd()-.5)*.24,
+   shapeCount:8+Math.floor(rnd()*15),scale:.94+rnd()*.12,
+   hue:index,progressFill:"#101018",progressTrack:"#FFFFFF"});
+  previous=index;
  }
  return styles;
 }
@@ -123,28 +135,17 @@ function bestBlackWhite(background){
  return contrastRatio(background,black)>=contrastRatio(background,white)?black:white;
 }
 function buildContrastSafeStyle(style){
- const bg1=colorRgb(style.bg1),bg2=colorRgb(style.bg2);
- const black="#101018",white="#FFFFFF";
- const blackMin=Math.min(contrastRatio(bg1,black),contrastRatio(bg2,black));
- const whiteMin=Math.min(contrastRatio(bg1,white),contrastRatio(bg2,white));
- const plate=blackMin>=whiteMin?black:white;
- const text=bestBlackWhite(plate);
- const stickerText=bestBlackWhite(style.accent2);
- const ratio=contrastRatio(plate,text);
- if(ratio<7)throw Error("Kontrast denetimi bu sahne için güvenli metin çifti üretemedi.");
- return {...style,textPlate:plate,textColor:text,stickerText,minContrast:ratio,plateContrast:Math.max(blackMin,whiteMin)};
+ const captionRatio=contrastRatio(style.captionPlate,style.captionText);
+ const hookRatio=contrastRatio(style.hookPlate,style.hookText);
+ const progressRatio=contrastRatio(style.progressFill,style.progressTrack);
+ if(captionRatio<7||hookRatio<7||progressRatio<4.5)throw Error("Kontrast kalite kontrolü başarısız.");
+ return {...style,minContrast:Math.min(captionRatio,hookRatio),captionContrast:captionRatio,hookContrast:hookRatio};
 }
 function auditSceneContrast(styles){
- let min=Infinity,failures=0;
- const audited=styles.map(style=>{
-  let safe=buildContrastSafeStyle(style);
-  const ratio=contrastRatio(safe.textPlate,safe.textColor);
-  if(ratio<7){failures++;safe={...safe,textPlate:"#101018",textColor:"#FFFFFF"};}
-  min=Math.min(min,contrastRatio(safe.textPlate,safe.textColor));
-  return safe;
- });
- if(!audited.length||min<7)throw Error("Görsel kalite kontrolü: Yazı kontrastı yeterli değil. Render başlatılmadı.");
- return {styles:audited,minContrast:min,scenes:audited.length,corrected:failures,passed:true};
+ const audited=styles.map(buildContrastSafeStyle);
+ const min=Math.min(...audited.map(x=>Math.min(x.captionContrast,x.hookContrast)));
+ if(!audited.length||min<7)throw Error("Kontrast kalite kontrolü geçmedi. Render başlatılmadı.");
+ return {styles:audited,minContrast:min,scenes:audited.length,corrected:0,passed:true};
 }
 
 function extractSearchTerms(text,title){
@@ -248,23 +249,35 @@ function drawPixelArt(ctx,x,y,size,caption,style,time){
  }
 }
 function drawBackdrop(ctx,w,h,t,style){
- const g=ctx.createLinearGradient(w*style.driftX,h*.05,w*(1-style.driftX),h);
- g.addColorStop(0,style.bg1);g.addColorStop(1,style.bg2);ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
- const drift=Math.sin(t*1.15)*w*.035;
- ctx.save();ctx.translate(drift,Math.cos(t*.8)*h*.01);
- ctx.globalAlpha=.45;ctx.fillStyle=style.accent;
- if(style.layout===0||style.layout===4){ctx.beginPath();ctx.moveTo(w*.62,0);ctx.lineTo(w,0);ctx.lineTo(w,h*.58);ctx.lineTo(w*.43,h*.32);ctx.closePath();ctx.fill();}
- else if(style.layout===1){ctx.fillRect(w*.72,0,w*.28,h);ctx.fillStyle=style.accent2;ctx.fillRect(0,h*.1,w*.12,h*.65);}
- else if(style.layout===2){ctx.beginPath();ctx.arc(w*.08,h*.82,w*.28,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(w*.95,h*.16,w*.22,0,Math.PI*2);ctx.fill();}
- else if(style.layout===3){for(let i=0;i<8;i++){ctx.save();ctx.translate(w*.5,h*.5);ctx.rotate(i*Math.PI/4+t*.12);ctx.fillRect(-w*.012,-h*.65,w*.024,h*1.3);ctx.restore();}}
- else if(style.layout===5){for(let i=0;i<10;i++){ctx.beginPath();ctx.arc(w*(i%2?.9:.1),h*(i/10),w*(.08+(i%3)*.025),0,Math.PI*2);ctx.fill();}}
- else{ctx.beginPath();ctx.moveTo(0,h*.68);ctx.lineTo(w*.24,h*.48);ctx.lineTo(w*.5,h*.76);ctx.lineTo(w*.75,h*.4);ctx.lineTo(w,h*.65);ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fill();}
- ctx.globalAlpha=.7;ctx.strokeStyle=style.ink;ctx.lineWidth=Math.max(3,w*.006);
- const cx=w*(.12+.76*Math.abs(Math.sin(style.shapeSeed))),cy=h*(.12+.16*Math.abs(Math.cos(style.shapeSeed)));
- for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(cx,cy,w*(.075+i*.038)+Math.sin(t*2+i)*w*.003,0,Math.PI*2);ctx.stroke();}
- // Animated dot grid / diagonal accents vary every scene and every render.
- ctx.globalAlpha=.18;ctx.fillStyle=style.ink;const dot=w*.006;
- for(let row=0;row<8;row++)for(let col=0;col<7;col++){const xx=(col/7)*w+(row%2?dot:0),yy=h*.04+row*h*.018;ctx.beginPath();ctx.arc(xx,yy,dot*(.5+.5*Math.sin(t*3+row+col)),0,Math.PI*2);ctx.fill();}
+ ctx.fillStyle=style.bg;ctx.fillRect(0,0,w,h);
+ const drift=Math.sin(t*1.1)*w*.018;
+ ctx.save();ctx.translate(drift,Math.cos(t*.8)*h*.012);ctx.globalAlpha=1;
+ if(style.layout===0){
+  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(w*.72,0);ctx.lineTo(w,0);ctx.lineTo(w,h*.48);ctx.lineTo(w*.56,h*.27);ctx.closePath();ctx.fill();
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.06,h*.84,w*.22,0,Math.PI*2);ctx.fill();
+ }else if(style.layout===1){
+  ctx.fillStyle=style.accent;ctx.fillRect(w*.76,0,w*.24,h*.48);
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.08,h*.18,w*.16,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=style.hookPlate;for(let i=0;i<5;i++)ctx.fillRect(w*(.12+i*.038),h*.74,w*.014,h*.07);
+ }else if(style.layout===2){
+  ctx.fillStyle=style.accent;ctx.beginPath();ctx.arc(w*.94,h*.14,w*.24,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.04,h*.83,w*.27,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=style.hookPlate;ctx.lineWidth=w*.012;for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(w*.84,h*.16,w*(.09+i*.055),0,Math.PI*2);ctx.stroke();}
+ }else if(style.layout===3){
+  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(0,h*.16);ctx.lineTo(w*.3,0);ctx.lineTo(w*.46,h*.35);ctx.lineTo(0,h*.52);ctx.closePath();ctx.fill();
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.moveTo(w*.72,h);ctx.lineTo(w,h*.62);ctx.lineTo(w,h);ctx.closePath();ctx.fill();
+ }else if(style.layout===4){
+  ctx.fillStyle=style.accent;for(let i=0;i<7;i++){ctx.save();ctx.translate(w*(.82+(i%2)*.06),h*(.12+i*.07));ctx.rotate(t*.18+i*.3);ctx.fillRect(-w*.016,-h*.12,w*.032,h*.24);ctx.restore();}
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.08,h*.78,w*.2,0,Math.PI*2);ctx.fill();
+ }else if(style.layout===5){
+  ctx.fillStyle=style.accent;ctx.fillRect(0,h*.08,w*.11,h*.36);ctx.fillRect(w*.89,h*.56,w*.11,h*.34);
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.moveTo(w*.7,0);ctx.lineTo(w,0);ctx.lineTo(w,h*.23);ctx.closePath();ctx.fill();
+ }else{
+  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(0,h*.64);ctx.lineTo(w*.22,h*.47);ctx.lineTo(w*.38,h*.68);ctx.lineTo(w*.56,h*.49);ctx.lineTo(w*.76,h*.68);ctx.lineTo(0,h*.94);ctx.closePath();ctx.fill();
+  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.94,h*.15,w*.17,0,Math.PI*2);ctx.fill();
+ }
+ ctx.fillStyle=style.hookPlate;const dot=w*.006;
+ for(let row=0;row<6;row++)for(let col=0;col<6;col++){const xx=w*.08+col*w*.027,yy=h*.035+row*h*.018;ctx.globalAlpha=.34;ctx.beginPath();ctx.arc(xx,yy,dot,0,Math.PI*2);ctx.fill();}
  ctx.restore();
 }
 function drawImageInSquare(ctx,image,x,y,size,time,style){
