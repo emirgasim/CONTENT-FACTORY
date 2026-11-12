@@ -264,6 +264,8 @@ function init() {
   $("#scriptText").addEventListener("input",capabilities);
   $("#localQuality").addEventListener("change",capabilities);
   capabilities();
+  const statusNode=$("#recordStatus");if(statusNode&&window.MutationObserver)new MutationObserver(capabilities).observe(statusNode,{childList:true,subtree:true,characterData:true});
+  $("#audioFile").addEventListener("change",()=>setTimeout(capabilities,50));
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
 })();
