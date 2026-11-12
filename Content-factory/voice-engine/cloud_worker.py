@@ -10,7 +10,7 @@ import gateway
 def r2_client():
  account=os.environ["CLOUDFLARE_ACCOUNT_ID"]
  return boto3.client("s3",endpoint_url=f"https://{account}.r2.cloudflarestorage.com",region_name="auto",aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],config=Config(signature_version="s3v4",retries={"max_attempts":4}))
-def bucket_name(): return os.getenv("R2_BUCKET_NAME","content-factory-short-jobs")
+def bucket_name(): return os.getenv("R2_BUCKET_NAME") or "content-factory-short-jobs"
 def job_key(job_id,suffix): return f"jobs/{job_id}/{suffix}"
 def put_json(s3,key,data): s3.put_object(Bucket=bucket_name(),Key=key,Body=json.dumps(data,ensure_ascii=False).encode(),ContentType="application/json",CacheControl="no-store")
 def get_json(s3,key): return json.loads(s3.get_object(Bucket=bucket_name(),Key=key)["Body"].read())
@@ -74,7 +74,16 @@ def cleanup(ttl_hours=24):
     expired=(now-datetime.fromisoformat(created.replace("Z","+00:00"))).total_seconds()>ttl_hours*3600 if created else True
   except Exception:expired=True
   if expired:delete_prefix(s3,prefix);removed+=1
- print(f"Removed {removed} expired projects. TTL={ttl_hours}h")
+ # Rate-limit counters are small R2 objects; discard stale counters after 48 hours.
+ for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket_name(),Prefix="limits/"):
+  for item in page.get("Contents",[]):
+   try:
+    value=json.loads(s3.get_object(Bucket=bucket_name(),Key=item["Key"])["Body"].read())
+    if now.timestamp()*1000-float(value.get("start",0))>48*3600*1000:
+     s3.delete_object(Bucket=bucket_name(),Key=item["Key"])
+   except Exception:
+    s3.delete_object(Bucket=bucket_name(),Key=item["Key"])
+ print(f"Removed {removed} expired projects and stale rate-limit records. TTL={ttl_hours}h")
 if __name__=="__main__":
  parser=argparse.ArgumentParser();parser.add_argument("--job-id");parser.add_argument("--cleanup",action="store_true");parser.add_argument("--ttl-hours",type=int,default=24);args=parser.parse_args()
  if args.cleanup:cleanup(args.ttl_hours)
