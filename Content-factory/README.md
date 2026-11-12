@@ -1,45 +1,40 @@
-# Content Factory
+# Content Factory — iPhone Shorts Factory
 
-iPhone-first Shorts production workspace. The Shorts Factory renders directly in iPhone Safari using browser-native audio, Canvas and MediaRecorder APIs. No Claude, paid API, render server, account token or per-video credits are required for local rendering.
+The Shorts Factory produces vertical MP4 directly in iPhone Safari. No render server, paid API key, per-video credit or Claude dependency is used by the local rendering path.
 
-## iPhone Shorts workflow
+## Production flow
 
-1. Open the site in Safari on the iPhone.
-2. Paste the narration text and enter a topic title.
-3. Record narration with the microphone or select an MP3, M4A or WAV file.
-4. Optionally select up to eight images from Photos / Files. If none are selected, the renderer creates animated graphic scenes itself.
-5. Tap iPhone'da Shorts üret.
-6. The browser decodes the audio locally, detects long low-volume gaps, keeps short natural pauses and joins the remaining audio.
-7. The script is divided into visual beats and distributed over the cleaned audio duration. The renderer animates 9:16 Canvas scenes and records the Canvas plus cleaned audio to MP4 using Safari MediaRecorder.
-8. Preview and save the MP4, cleaned WAV and render notes.
+1. Paste narration text and select/record the matching audio.
+2. Optionally add up to eight of your own visual reference images.
+3. The browser analyzes the complete audio waveform. Long low-volume pauses may be removed conservatively; if estimated cuts exceed 7% of the recording, the entire original audio is preserved to avoid cutting speech.
+4. The script is split into short visual beats. For every beat, the renderer searches Wikimedia Commons for image files and reads each file's license metadata.
+5. Only CC0, public-domain, CC BY and CC BY-SA results are selected. NC and ND files are rejected. If no suitable image loads, the scene uses original graphic/pixel artwork.
+6. Each scene is placed in a centered square visual frame with a unique, randomly generated bright background composition. Layout, colors, shapes and motion vary per render and per scene.
+7. Canvas animation and cleaned narration are recorded locally through Safari MediaRecorder as MP4. The resulting video metadata is checked against expected audio duration before download is enabled.
 
-## Local rendering architecture
+## Source and license handling
 
-- public/local-render.js: browser-only audio analysis, silence edit decision list, scene planning, Canvas animation, audio mixing, MP4 recording and local downloads.
-- public/app.js: UI, microphone capture, file selection and state.
-- public/index.html: iPhone-first interface.
-- Cloudflare Pages serves static files only. It does not process the audio or video.
-- No audio, script or selected image is uploaded to a render service by the Shorts Factory local render path.
-- MP4 output is feature-detected. Safari must report video/mp4 MediaRecorder support; the app will not silently rename a WebM file to MP4.
-- Default output: 1080 × 1920, 24 fps. A 720 × 1280 option is available for lower-memory devices.
-- The initial local renderer accepts audio up to 3 minutes and up to 8 optional user images.
+- Commons is queried through its public MediaWiki Action API with CORS (origin=*), image information and extended license metadata.
+- Each selected file's author, license, license URL and Commons file page are written to sources-and-licenses.txt.
+- Wikimedia Commons licensing guidance: https://commons.wikimedia.org/wiki/Commons:Licensing
+- CC BY and CC BY-SA permit commercial reuse subject to attribution; BY-SA has share-alike requirements. The user must follow each file's specific license and check any non-copyright restrictions.
+- Internet image search depends on network availability. If Commons is unavailable or no eligible image loads, the renderer uses original graphics and records that fallback; it does not silently use unlicensed images.
 
-## Current capability boundaries
+## iPhone render constraints
 
-- Silence detection is waveform/RMS based. It shortens long low-volume gaps while retaining a small amount of room tone. Very quiet speech may be mistaken for silence; always review the result.
-- Script timing is currently distributed over the cleaned audio using word-count weights. This is approximate timing, not local Whisper transcription or exact word-level forced alignment.
-- Visuals are original animated graphic compositions and optional images selected by the user. This initial iPhone-only build does not automatically download stock footage or search Wikimedia; no external stock API or media service is called.
-- The renderer does not yet generate a natural-language visual storyboard from an LLM. It uses deterministic scene layouts based on the script text.
-- iPhone Safari must remain open in the foreground during rendering. Screen Wake Lock is requested where supported, but iOS may still interrupt long tasks or background tabs.
-- Browser memory, battery, thermal throttling and hardware encoder availability limit practical render length and quality. No credits does not mean unlimited device resources.
-- MP4 generation must be tested on the user's exact iPhone/Safari version before treating the workflow as production-ready.
+- Output: 1080 × 1920 at 24 fps by default, with a 720 × 1280 lower-memory option.
+- The browser checks for MediaRecorder MP4 support before starting. It does not rename WebM to MP4.
+- Keep Safari in the foreground while rendering. iOS can suspend background tabs and browser media tasks.
+- The app checks the actual generated MP4 duration against the cleaned narration duration. Incomplete output is rejected instead of presented as finished.
+- Browser memory, device temperature, battery and Safari's hardware encoder remain practical limits. No credits means no per-video billing, not unlimited device processing.
+- Text-to-audio timing is currently distributed over the cleaned narration based on word count. It is not word-level forced alignment or on-device speech recognition.
 
 ## Agent Hub
 
-The YouTube Agent Hub remains a separate set of in-panel deterministic analysis tools and ChatGPT task briefs. It is not required by the local Shorts renderer.
+The separate YouTube Agent Hub remains a set of deterministic in-panel analysis tools and ChatGPT task briefs. It is not required for video rendering.
 
-## Security and privacy
+## Privacy
 
-- GitHub stores source code only.
-- Audio, script and optional images are processed in the browser memory and are not committed to GitHub or sent to a remote render API by the local renderer.
-- The page must be served over HTTPS for microphone access.
+- Scripts, selected audio and personal images remain in browser memory for the local render path.
+- Commons image searches send the scene's extracted topic/search words to Wikimedia Commons, not the audio file.
+- GitHub stores application source code only; never commit audio, generated videos or secrets.
