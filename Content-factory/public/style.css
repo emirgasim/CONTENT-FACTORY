@@ -25,3 +25,6 @@
 /* iPhone microphone narration recorder */
 .record-console{border:1px solid var(--line);border-radius:13px;background:#11131c;padding:15px;margin:14px 0}.record-indicator{display:flex;align-items:center;gap:10px}.record-indicator>span{width:11px;height:11px;border-radius:50%;background:#737789}.record-indicator b{font-size:12px}.record-indicator strong{margin-left:auto;font:700 18px 'DM Mono';font-variant-numeric:tabular-nums}.record-indicator.recording>span{background:#ff626f;box-shadow:0 0 0 6px #ff626f22;animation:recordpulse 1s infinite}.record-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.record-actions #redoRecording{grid-column:1/-1}.record-actions button:disabled{opacity:.4;cursor:not-allowed}@keyframes recordpulse{50%{opacity:.35}}#recordStatus{min-height:34px}
 @media(max-width:760px){.record-actions{grid-template-columns:1fr 1fr}.record-actions #redoRecording{grid-column:1/-1}}
+
+/* Focused Shorts-only workspace */
+.mode-grid{grid-template-columns:1fr}.mode-card{width:100%}
