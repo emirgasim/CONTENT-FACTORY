@@ -8,7 +8,7 @@
 <main>
 <section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Metni ve ses dosyanı ekle. Sessizliği temizle, sahneleri tasarla ve MP4 videonu doğrudan iPhone'da oluştur.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
 
-<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">ON-DEVICE RENDER</div><h3>iPhone yerel üretim</h3><p class="muted">Ses analizi, sessizlik temizliği, sahne animasyonları ve MP4 kodlama bu iPhone üzerinde yapılır. Harici render sunucusu, API anahtarı veya video kredisi kullanılmaz.</p><label class="field-label" for="localQuality">Çıktı kalitesi</label><select id="localQuality"><option value="720">720 × 1280 · Daha hızlı</option><option value="1080" selected>1080 × 1920 · Yüksek kalite</option></select><div id="localCapability" class="media-info">Safari desteği kontrol ediliyor…</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
+<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses, metin ve görseller iPhone dışındaki geçici render işçisine gönderilir. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
 
 <section id="agentHub" class="panel agent-hub">
 <div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div></div>
@@ -46,7 +46,7 @@
 <div class="record-console"><div class="record-indicator" id="recordIndicator"><span></span><b id="recordState">Kayıt hazır</b><strong id="recordTimer">00:00</strong></div><div class="record-actions"><button id="startRecording" class="btn btn-primary">● Mikrofonla kaydet</button><button id="stopRecording" class="btn btn-dark" disabled>Kaydı bitir</button><button id="redoRecording" class="btn btn-ghost hidden" disabled>Yeniden kaydet</button></div></div>
 <div id="recordStatus" class="media-info">Mikrofon izni istendiğinde izin ver. Hazır ses dosyası yüklemek için aşağıdaki Dosyayı Seç alanını kullan.</div>
 <audio id="referencePreview" controls class="audio-preview hidden"></audio><div class="upload-audio"><label class="field-label" for="audioFile">VEYA HAZIR SES DOSYASI YÜKLE</label><input id="audioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.mp4,.mpeg,.mpga,.ogg,.opus,.webm"><span class="muted">MP3, M4A, WAV veya desteklenen ses dosyası · En fazla 30 MB</span></div>
-<button id="startRender" class="btn btn-primary btn-wide" disabled>iPhone'da Shorts üret</button>
+<button id="startRender" class="btn btn-primary btn-wide" disabled>Bulutta Shorts üret</button>
 </div>
 
 <div id="renderPanel" class="panel hidden">
@@ -56,11 +56,11 @@
 <div id="renderResult" class="hidden">
 <div class="result-preview"><video id="finalVideo" controls playsinline></video></div>
 <div class="trim-stats" id="renderStats"></div>
-<div class="download-grid"><button id="downloadVideo" class="btn btn-primary">MP4 indir</button><button id="downloadCleanAudio" class="btn btn-ghost">Temiz ses indir</button><button id="downloadCredits" class="btn btn-ghost">Kaynak / lisans bilgisi</button></div><button id="nextTopic" class="btn btn-ghost btn-wide">İkinci konuya geç / yeni Shorts başlat</button>
+<div class="download-grid"><button id="downloadVideo" class="btn btn-primary">MP4 indir</button><button id="downloadCleanAudio" class="btn btn-ghost">Temiz ses indir</button><button id="downloadCredits" class="btn btn-ghost">Kaynak / lisans bilgisi</button></div><div id="renderCleanupStatus" class="media-info"></div><button id="deleteCloudProject" class="btn btn-primary btn-wide hidden">İndirdim, projeyi sil</button><button id="nextTopic" class="btn btn-ghost btn-wide">İkinci konuya geç / yeni Shorts başlat</button>
 <p class="muted">İndirilen görsel video, CapCut'ta yüz kliplerin ve diğer Shorts parçalarınla birleştirilmeye hazırdır.</p>
 </div>
 </div>
 </section>
 
 <footer><span>CONTENT FACTORY / ONE TOPIC AT A TIME</span></footer>
-</div><script src="/app.js?v=bbcb3ad"></script><script src="/local-render.js?v=aed5968f"></script></body></html>
+</div><script src="/app.js?v=cloud-background-v1"></script></body></html>
