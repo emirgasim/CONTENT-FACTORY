@@ -15,7 +15,7 @@ function capabilities(){
  const supported=!!Audio&&!!HTMLCanvasElement.prototype.captureStream&&!!window.MediaRecorder;
  const mp4=!!window.MediaRecorder&&(MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2")||MediaRecorder.isTypeSupported("video/mp4"));
  setText("#localCapability",supported&&mp4?"iPhone Safari MP4 kaydını destekliyor. Ses, görsel ve montaj cihazda işlenecek.":"Bu Safari sürümünde MP4 kayıt desteği doğrulanamadı.");
- const button=$("#startRender");if(button)button.disabled=!(supported&&mp4&&state.reference&&$("#scriptText").value.trim());
+ const button=$("#startRender");if(button)button.disabled=!(supported&&mp4&&state.reference&&$("#scriptText").value.trim()&&$("#hookText").value.trim());
 }
 function splitIntoScenes(text){
  const sentences=(text.match(/[^.!?]+[.!?]?/g)||[text]).map(x=>x.trim()).filter(Boolean),out=[];
