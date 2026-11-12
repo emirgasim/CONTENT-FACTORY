@@ -176,13 +176,14 @@ function permittedLicense(label){
  return /cc0|cc 0|cc[- ]by(?:[- ]sa)?|public domain/.test(s);
 }
 function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();}
-async function searchCommons(query){
+async function searchCommons(query,continuation=null){
  const params=new URLSearchParams({
   action:"query",format:"json",origin:"*",generator:"search",gsrsearch:query,
-  gsrnamespace:"6",gsrlimit:"15",prop:"imageinfo",
-  iiprop:"url|extmetadata|thumbmime",iiurlwidth:"1200"
+  gsrnamespace:"6",gsrlimit:"50",prop:"imageinfo",
+  iiprop:"url|extmetadata|thumbmime",iiurlwidth:"1400"
  });
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),14000);
+ if(continuation)params.set("gsroffset",String(continuation));
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),16000);
  try{
   const response=await fetch(COMMONS+"?"+params.toString(),{signal:controller.signal,mode:"cors",credentials:"omit"});
   if(!response.ok)throw Error("Commons HTTP "+response.status);
@@ -199,7 +200,7 @@ async function searchCommons(query){
     license,licenseUrl:metaValue(meta,"LicenseUrl"),width:info.width||0,height:info.height||0
    });
   }
-  return items;
+  return {items,continuation:data.continue?.gsroffset??null};
  }finally{clearTimeout(timer);}
 }
 function loadImage(item){
@@ -217,29 +218,49 @@ function searchQueryVariants(sceneText,title){
  const sceneOnly=extractSearchTerms(sceneText,"");
  return [...new Set([main,secondary,sceneOnly].filter(Boolean))];
 }
+function sceneImageTarget(scene){
+ // A new image is scheduled roughly every 2.5 seconds of narration.
+ return Math.max(1,Math.ceil((scene.end-scene.start)/2.5));
+}
 async function searchSceneAssets(timeline,title,ownImages){
- const assets=new Array(timeline.length).fill(null),credits=[],usedUrls=new Set();
- const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title)}));
+ const assets=new Array(timeline.length).fill(null).map(()=>[]),credits=[],usedUrls=new Set(),own=ownImages||[];
+ const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title),target:sceneImageTarget(scene)}));
  let cursor=0;
  const workers=Array.from({length:3},async()=>{
   while(cursor<jobs.length){
    const job=jobs[cursor++];
    for(const query of job.queries){
-    try{
-     const results=await searchCommons(query);
-     let loaded=null;
-     for(const item of results.slice(0,10)){
-      if(usedUrls.has(item.url))continue;
-      try{loaded=await loadImage(item);usedUrls.add(item.url);break;}catch{}
-     }
-     if(loaded){assets[job.i]=loaded;credits.push(loaded);break;}
-    }catch(e){console.warn("Commons search failed",query,e);}
+    if(assets[job.i].length>=job.target)break;
+    let continuation=null,emptyPages=0;
+    do{
+     try{
+      const page=await searchCommons(query,continuation);
+      let pageAdded=0;
+      for(const item of page.items){
+       if(assets[job.i].length>=job.target)break;
+       if(usedUrls.has(item.url))continue;
+       usedUrls.add(item.url);
+       try{
+        const loaded=await loadImage(item);
+        assets[job.i].push(loaded);credits.push(loaded);pageAdded++;
+       }catch(e){console.warn("Stock image could not load",item.title,e);}
+      }
+      continuation=page.continuation;
+      emptyPages=pageAdded===0?emptyPages+1:0;
+     }catch(e){console.warn("Commons search failed",query,e);break;}
+    }while(assets[job.i].length<job.target&&continuation!==null&&emptyPages<2);
    }
-   if(!assets[job.i]&&ownImages.length)assets[job.i]=ownImages[job.i%ownImages.length];
+   // User-supplied images are a final fallback; don't claim they are stock assets.
+   let ownIndex=0;
+   while(assets[job.i].length<job.target&&own.length){
+    const candidate=own[(job.i+ownIndex++)%own.length];
+    if(!assets[job.i].some(x=>x.url===candidate.url))assets[job.i].push(candidate);
+    if(ownIndex>=own.length)break;
+   }
   }
  });
  await Promise.all(workers);
- return{assets,credits};
+ return{assets,credits,required:jobs.reduce((n,j)=>n+j.target,0),found:assets.reduce((n,a)=>n+a.length,0)};
 }
 function loadOwnImages(files){
  return Promise.all(files.map(file=>new Promise((resolve,reject)=>{
@@ -310,7 +331,7 @@ function drawImageInSquare(ctx,image,x,y,size,time,style){
 function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook){
  const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
  const style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.max(0,Math.min(1,time/duration));
- const image=assets[scene.index]?.img;
+ const sceneImages=assets[scene.index]||[],image=sceneImages.length?sceneImages[Math.min(sceneImages.length-1,Math.floor(local/2.5))]?.img:null;
  drawBackdrop(ctx,w,h,time,style);
  // Fixed center / chest-level square visual stage.
  const size=Math.min(w*.83,h*.49),x=(w-size)/2,y=h*.175;
@@ -384,8 +405,8 @@ async function renderLocally(){
  const ownImages=await loadOwnImages(state.visualFiles||[]);
  setProgress(15);setText("#renderStatus",timeline.length+" sahne için internette açık lisanslı görseller aranıyor…");
  const found=await searchSceneAssets(timeline,title,ownImages),assets=found.assets;
- const imageCount=assets.filter(Boolean).length;
- setProgress(30);setText("#renderStatus",imageCount+" sahne görseli bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
+ const imageCount=found.found;
+ setProgress(30);setText("#renderStatus",imageCount+"/"+found.required+" sahne görseli bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
  const ctx=canvas.getContext("2d",{alpha:false});if(!ctx)throw Error("Canvas çizim alanı açılamadı.");
