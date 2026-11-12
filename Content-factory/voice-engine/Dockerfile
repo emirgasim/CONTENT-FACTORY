@@ -20,7 +20,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 ENV PYTHONUNBUFFERED=1
-ENV HF_HOME=/data/.cache/huggingface
+ENV HF_HOME=/home/mambauser/.cache/huggingface
 ENV TTS_INTERNAL_URL=http://127.0.0.1:18083
 ENV CPU_THREADS=2
 ENV ASR_MODEL_SIZE=base
