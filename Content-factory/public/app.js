@@ -50,7 +50,7 @@ async function pollCloudJob(id,title){
   if(!response.ok){let msg="İş durumu okunamadı ("+response.status+").";try{msg=(await response.json()).error||msg}catch{}throw Error(msg)}
   const job=await response.json();setProgress(job.progress||3);
   if(job.message&&job.message!==lastMessage){setStatus("#renderStatus",job.message);lastMessage=job.message}
-  if(job.status==="failed")throw Error(job.error||"Bulut render başarısız oldu.");
+  if(job.status==="failed"){$("#deleteCloudProject").classList.remove("hidden");$("#deleteCloudProject").textContent="Başarısız projeyi ve dosyaları sil";$("#renderCleanupStatus").textContent="Bu iş başarısız oldu. Geçici bulut dosyalarını hemen temizleyebilirsin.";throw Error(job.error||"Bulut render başarısız oldu.");}
   if(job.status==="completed"){
    const headers={"X-Job-Token":state.jobToken};
    async function output(name){const r=await fetch("/api/shorts/jobs/"+encodeURIComponent(id)+"/"+name,{headers});if(!r.ok){let msg="Çıktı indirilemedi ("+r.status+").";try{msg=(await r.json()).error||msg}catch{}throw Error(msg)}return r.blob()}
@@ -60,7 +60,7 @@ async function pollCloudJob(id,title){
    $("#finalVideo").src=state.videoUrl;
    $("#renderStats").textContent="Süre: "+Number(job.duration||0).toFixed(1)+" sn · Sessizlik azaltıldı: "+Number(job.removed_silence||0).toFixed(1)+" sn · Görsel sahne: "+(job.scene_count||0)+" · Bulutta render edildi";
    $("#renderCleanupStatus").textContent="Geçici proje, indirme onayından sonra hemen silinir. Onay gelmezse 24 saat içinde otomatik temizlenir.";
-   $("#deleteCloudProject").classList.remove("hidden");
+   $("#deleteCloudProject").classList.add("hidden");$("#deleteCloudProject").textContent="İndirdim, projeyi sil";
    $("#renderResult").classList.remove("hidden");setProgress(100);
    setStatus("#renderStatus","MP4 hazır. Şimdi iPhone'una indir; indirme tamamlanınca proje dosyalarını sil.");
    return;
@@ -91,7 +91,7 @@ async function deleteCloudProject(){
   state.reference=null;
   $("#audioFile").value="";$("#visualFiles").value="";$("#scriptText").value="";$("#hookText").value="";$("#topicTitle").value="";
   $("#referencePreview").removeAttribute("src");$("#referencePreview").classList.add("hidden");
-  $("#renderResult").classList.add("hidden");$("#deleteCloudProject").classList.add("hidden");
+  $("#renderResult").classList.add("hidden");$("#deleteCloudProject").classList.add("hidden");$("#deleteCloudProject").textContent="İndirdim, projeyi sil";
   $("#renderStatus").textContent="Proje temizlendi. Bulut ses, metin, görseller, ara dosyalar ve MP4 silindi.";
   $("#recordStatus").textContent="Bulut projesi silindi. Yeni Shorts için ses ve metin ekleyebilirsin.";
   $("#startRender").disabled=true;$("#startRender").textContent="Bulutta Shorts üret";
@@ -105,7 +105,7 @@ $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 $("#hookText").oninput=()=>{$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim()};$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · cümleye göre sahne";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#scriptText").value.trim()?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";};
 $("#clearScript").onclick=()=>{$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult()};
 $("#startRender").onclick=approveAndRender;$("#deleteCloudProject").onclick=deleteCloudProject;
-$("#downloadVideo").onclick=()=>downloadBlob(state.videoUrl,($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4");
+$("#downloadVideo").onclick=()=>{downloadBlob(state.videoUrl,($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4");$("#deleteCloudProject").classList.remove("hidden");$("#renderCleanupStatus").textContent="İndirme başlatıldı. Dosyanın iPhone Dosyalar uygulamasına kaydedildiğini kontrol ettikten sonra proje temizliğini onayla.";};
 $("#downloadCleanAudio").onclick=()=>downloadBlob(state.audioUrl,"shorts-cleaned-voice.wav");
 $("#downloadCredits").onclick=()=>downloadBlob(state.creditsUrl,"sources-and-licenses.txt");
 $("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#hookText").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
