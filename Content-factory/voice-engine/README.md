@@ -26,14 +26,15 @@ CPU-first MOSS-TTS-Nano ONNX voice cloning + pause trimming + short-form video r
 ## Deploy as a Hugging Face Docker Space
 
 1. Create a new **Docker Space**.
-2. Copy the contents of this `voice-engine` folder to the Space repository root.
-3. Select CPU hardware. The first boot downloads ONNX model and audio-tokenizer weights from the official Hugging Face model repositories.
-4. In Space Settings → Variables and secrets, add:
+2. Create the Space with a name such as `YOUR_ACCOUNT/content-factory-engine`; choose Docker.
+3. In GitHub repository Settings → Secrets and variables → Actions, add `HF_TOKEN` (a Hugging Face write token) and `HF_SPACE_ID` (the exact `owner/space-name`). The included GitHub Action copies this folder to the Space root whenever the engine code changes.
+4. Select CPU hardware. The first boot downloads ONNX model and audio-tokenizer weights from the official Hugging Face model repositories.
+5. In Space Settings → Variables and secrets, add:
    - `FACTORY_API_TOKEN`: a long random secret used by the Content Factory website.
    - `ALLOWED_ORIGINS`: `https://content-factory-7s6.pages.dev`
    - Optional `CPU_THREADS=2`, `ASR_MODEL_SIZE=base`.
-5. Wait for the first build and model warm-up. Test `https://YOUR-SPACE.hf.space/health`.
-6. In Content Factory → Motor ayarı, enter the Space URL and the same `FACTORY_API_TOKEN`.
+6. Wait for the first build and model warm-up. Test `https://YOUR-SPACE.hf.space/health`.
+7. In Content Factory → Motor ayarı, enter the Space URL and the same `FACTORY_API_TOKEN`.
 
 **Hardware and price note:** The model does not charge per character, but it still needs compute. Hugging Face currently lists CPU Basic as 2 vCPU / 16 GB and $0 per running hour; creating a new compute Space requires an eligible paid plan. CPU Upgrade is billed hourly. Check current account eligibility and prices before creating the Space. See https://huggingface.co/docs/hub/spaces-gpus and https://huggingface.co/pricing.
 
