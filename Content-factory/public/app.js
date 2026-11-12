@@ -98,7 +98,7 @@ async function deleteCloudProject(){
  }catch(error){setStatus("#renderStatus","Silme işlemi tamamlanamadı: "+error.message);button.disabled=false;button.textContent="İndirdim, projeyi sil"}
 }
 $("#settingsToggle").onclick=()=>$("#engineSettings").classList.toggle("hidden");
-// Remote engine controls removed: the renderer runs locally on iPhone.
+// The iPhone is only a control panel; rendering runs in the GitHub Actions cloud worker.
 $("#startShorts").onclick=openShorts;
 $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 
