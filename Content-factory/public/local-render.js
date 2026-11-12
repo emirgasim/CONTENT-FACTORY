@@ -98,7 +98,7 @@ function makeSceneStyles(count,seed){
  return styles;
 }
 function extractSearchTerms(text,title){
- const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\\p{L}\\p{N}]{3,}/gu)||[];
+ const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\p{L}\p{N}]{3,}/gu)||[];
  const aliases={"oyun":"video game arcade","oyuncu":"video game","harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth","uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog","bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned","ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes","minecraft":"voxel game","pacman":"arcade game"};
  const seen=new Set(),selected=[],translated=[];
  for(const word of words){if(STOP.has(word)||seen.has(word))continue;seen.add(word);selected.push(word);if(aliases[word])translated.push(aliases[word]);if(selected.length>=6)break;}
@@ -106,7 +106,7 @@ function extractSearchTerms(text,title){
 }
 function permittedLicense(label){
  const s=String(label||"").toLowerCase();
- if(/non.?commercial|\\bnc\\b|cc\\s*by[- ]nc|\\bnd\\b|cc\\s*by[- ]nd|no.?derivatives/.test(s))return false;
+ if(/non.?commercial|\bnc\b|cc\s*by[- ]nc|\bnd\b|cc\s*by[- ]nd|no.?derivatives/.test(s))return false;
  return /cc0|cc 0|cc[- ]by(?:[- ]sa)?|public domain/.test(s);
 }
 function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();}
