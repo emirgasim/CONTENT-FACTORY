@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);
-const state={reference:null,referenceUrl:null,videoUrl:null,audioUrl:null,creditsUrl:null,jobId:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
+const state={reference:null,referenceUrl:null,videoUrl:null,audioUrl:null,creditsUrl:null,jobId:null,jobToken:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
 window.cfState=state;
 const DB_NAME="content-factory-local",STORE="voice-profile";
 function engineUrl(){return ($("#engineUrl").value||localStorage.getItem("cf-engine-url")||"").trim().replace(/\/+$/,"")}
@@ -12,7 +12,7 @@ async function putVoice(blob,name,type){const db=await openDb();return new Promi
 async function getVoice(){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,"readonly"),req=tx.objectStore(STORE).get("reference");req.onsuccess=()=>{db.close();const x=req.result;resolve(x?new File([x.blob],x.name,{type:x.type||"audio/wav"}):null)};req.onerror=()=>{db.close();reject(req.error)}})}
 async function deleteVoice(){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,"readwrite");tx.objectStore(STORE).delete("reference");tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}})}
 function revoke(url){if(url)URL.revokeObjectURL(url)}
-function resetResult(){revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);state.videoUrl=null;state.audioUrl=null;state.creditsUrl=null;state.jobId=null;$("#renderPanel").classList.add("hidden");$("#renderResult").classList.add("hidden");$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim();$("#startRender").textContent="iPhone’da Shorts üret";setProgress(0)}
+function resetResult(){revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);state.videoUrl=null;state.audioUrl=null;state.creditsUrl=null;state.jobId=null;state.jobToken=null;$("#renderPanel").classList.add("hidden");$("#renderResult").classList.add("hidden");$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim();$("#startRender").textContent="iPhone’da Shorts üret";setProgress(0)}
 function openShorts(){resetResult();$("#editor").classList.remove("hidden");$("#editor").scrollIntoView({behavior:"smooth"})}
 function saveEngine(){localStorage.setItem("cf-engine-url",$("#engineUrl").value.trim());localStorage.setItem("cf-engine-token",$("#engineToken").value.trim());setStatus("#engineStatus","Motor bağlantı ayarları kaydedildi.")}
 async function checkEngine(){const base=engineUrl();if(!base){setStatus("#engineStatus","Önce servis adresini gir.");return}setStatus("#engineStatus","Bağlantı kontrol ediliyor…");try{const r=await fetch(base+"/health",{headers:headers()});const j=await r.json();if(!r.ok)throw Error(j.detail||j.error||r.status);if(j.video_renderer!==true)throw Error("Servise ulaşıldı ancak FFmpeg video motoru çalışmıyor.");setStatus("#engineStatus","Bağlantı başarılı · MP4 motoru hazır.")}catch(e){setStatus("#engineStatus","Bağlantı kurulamadı: "+e.message)}}
@@ -20,62 +20,96 @@ function loadReference(){const ok=!!state.reference;const scriptReady=!!$("#scri
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function fetchBlob(path){const r=await fetch(engineUrl()+path,{headers:headers()});if(!r.ok){let message="Dosya indirilemedi ("+r.status+")";try{const j=await r.json();message=j.detail||j.error||message}catch{}throw Error(message)}return await r.blob()}
 async function approveAndRender(){
- const text=$("#scriptText").value.trim();
- const title=$("#topicTitle").value.trim()||"Content Factory Shorts";
- const base=engineUrl();
- const button=$("#startRender");
- if(!text){setStatus("#recordStatus","Önce seslendirme metnini yapıştır.");$("#scriptText").focus();return}
- if(!state.reference){setStatus("#recordStatus","Önce mikrofonla ses kaydet veya hazır bir ses dosyası seç.");return}
- if(!base||!token()){
-  setStatus("#recordStatus","Ses hazır; ancak video motoru bağlantısı eksik. Motor ayarlarında servis adresi ve erişim anahtarı gerekli.");
-  $("#engineSettings").classList.remove("hidden");
-  $("#engineSettings").scrollIntoView({behavior:"smooth"});
-  return;
- }
- button.disabled=true;
- button.textContent="Motor kontrol ediliyor…";
- $("#renderPanel").classList.remove("hidden");
- $("#renderResult").classList.add("hidden");
- setProgress(3);
- setStatus("#renderStatus","Video motoru kontrol ediliyor…");
+ const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),button=$("#startRender");
+ if(!text){setStatus("#recordStatus","Önce seslendirme metnini ekle.");$("#scriptText").focus();return}
+ if(!hook){setStatus("#recordStatus","Her video için üstte görünecek kanca yazısını gir.");$("#hookText").focus();return}
+ if(!state.reference){setStatus("#recordStatus","Önce mikrofonla kaydet veya hazır ses dosyası seç.");return}
+ button.disabled=true;button.textContent="Bulut kuyruğuna yükleniyor…";
+ $("#renderPanel").classList.remove("hidden");$("#renderResult").classList.add("hidden");setProgress(2);
+ setStatus("#renderStatus","Ses, metin ve referans materyalleri güvenli geçici bulut alanına yükleniyor…");
  try{
-  const healthResponse=await fetch(base+"/health",{headers:headers()});
-  if(!healthResponse.ok)throw Error("Video motoruna ulaşılamadı (HTTP "+healthResponse.status+"). Motor adresini kontrol et.");
-  const health=await healthResponse.json();
-  if(health.video_renderer===false)throw Error("Video motorunda FFmpeg bulunamadı; MP4 üretimi başlatılamıyor.");
-  setStatus("#renderStatus","Ses dosyası gönderiliyor; uzun sessizlikler temizlenecek…");
-  button.textContent="Video hazırlanıyor…";
-  const fd=new FormData();
-  fd.append("text",text);
-  fd.append("title",title);
+  const fd=new FormData();fd.append("text",text);fd.append("title",title);fd.append("hook",hook);
   fd.append("audio",state.reference,state.reference.name||"narration-audio");
-  const r=await fetch(base+"/api/shorts/render",{method:"POST",headers:headers(),body:fd});
-  if(!r.ok){let m="Video işi başlatılamadı (HTTP "+r.status+").";try{const j=await r.json();m=j.detail||j.error||m}catch{}throw Error(m)}
-  const job=await r.json();
-  state.jobId=job.job_id;
-  if(!state.jobId)throw Error("Video motoru iş numarası döndürmedi.");
-  await pollJob(state.jobId,title);
-  button.textContent="Video hazırlandı";
- }catch(e){
-  setStatus("#renderStatus","İşlem başlatılamadı: "+e.message);
-  button.disabled=false;
-  button.textContent="Tekrar dene · Sessizlikleri temizle ve videoyu hazırla";
+  Array.from($("#visualFiles").files||[]).slice(0,8).forEach(file=>fd.append("images",file,file.name));
+  const response=await fetch("/api/shorts/jobs",{method:"POST",body:fd});
+  const job=await response.json();if(!response.ok)throw Error(job.error||"Bulut işi başlatılamadı.");
+  state.jobId=job.job_id;state.jobToken=job.job_token;
+  localStorage.setItem("cf-cloud-job-id",state.jobId);localStorage.setItem("cf-cloud-job-token",state.jobToken);
+  setStatus("#renderStatus","Bulut render başlatıldı. Safari'yi kapatsan da render devam eder.");
+  await pollCloudJob(state.jobId,title);
+  button.textContent="Video hazır";
+ }catch(error){
+  setStatus("#renderStatus","İş başlatılamadı: "+error.message);
+  button.disabled=false;button.textContent="Tekrar dene · Bulutta Shorts üret";
  }
 }
-async function pollJob(id,title){const base=engineUrl();let lastStatus="";for(let attempt=0;attempt<600;attempt++){const r=await fetch(base+"/api/jobs/"+encodeURIComponent(id),{headers:headers()});if(!r.ok)throw Error("İş durumu okunamadı ("+r.status+")");const j=await r.json();setProgress(j.progress||5);if(j.message!==lastStatus){setStatus("#renderStatus",j.message||j.status||"İşleniyor…");lastStatus=j.message}if(j.status==="failed")throw Error(j.error||"Render başarısız oldu.");if(j.status==="completed"){const vid=await fetchBlob("/api/jobs/"+encodeURIComponent(id)+"/video");const aud=await fetchBlob("/api/jobs/"+encodeURIComponent(id)+"/audio");const cr=await fetchBlob("/api/jobs/"+encodeURIComponent(id)+"/credits");revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);state.videoUrl=URL.createObjectURL(vid);state.audioUrl=URL.createObjectURL(aud);state.creditsUrl=URL.createObjectURL(cr);$("#finalVideo").src=state.videoUrl;$("#renderStats").textContent="Süre: "+Number(j.duration||0).toFixed(1)+" sn · Sessizlik azaltıldı: "+Number(j.removed_silence||0).toFixed(1)+" sn · Görsel sahne: "+(j.scene_count||0);$("#renderResult").classList.remove("hidden");setProgress(100);setStatus("#renderStatus","Video hazır. MP4'ü indirip CapCut'a aktarabilirsin.");return}await new Promise(resolve=>setTimeout(resolve,2200))}throw Error("Render zaman aşımına uğradı. Motorun çalışma durumunu kontrol et.")}
+async function pollCloudJob(id,title){
+ let lastMessage="";
+ for(let attempt=0;attempt<7200;attempt++){
+  const response=await fetch("/api/shorts/jobs/"+encodeURIComponent(id),{headers:{"X-Job-Token":state.jobToken,"Cache-Control":"no-store"}});
+  if(!response.ok){let msg="İş durumu okunamadı ("+response.status+").";try{msg=(await response.json()).error||msg}catch{}throw Error(msg)}
+  const job=await response.json();setProgress(job.progress||3);
+  if(job.message&&job.message!==lastMessage){setStatus("#renderStatus",job.message);lastMessage=job.message}
+  if(job.status==="failed")throw Error(job.error||"Bulut render başarısız oldu.");
+  if(job.status==="completed"){
+   const headers={"X-Job-Token":state.jobToken};
+   async function output(name){const r=await fetch("/api/shorts/jobs/"+encodeURIComponent(id)+"/"+name,{headers});if(!r.ok){let msg="Çıktı indirilemedi ("+r.status+").";try{msg=(await r.json()).error||msg}catch{}throw Error(msg)}return r.blob()}
+   const [video,audio,credits]=await Promise.all([output("video"),output("audio"),output("credits")]);
+   revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
+   state.videoUrl=URL.createObjectURL(video);state.audioUrl=URL.createObjectURL(audio);state.creditsUrl=URL.createObjectURL(credits);
+   $("#finalVideo").src=state.videoUrl;
+   $("#renderStats").textContent="Süre: "+Number(job.duration||0).toFixed(1)+" sn · Sessizlik azaltıldı: "+Number(job.removed_silence||0).toFixed(1)+" sn · Görsel sahne: "+(job.scene_count||0)+" · Bulutta render edildi";
+   $("#renderCleanupStatus").textContent="Geçici proje, indirme onayından sonra hemen silinir. Onay gelmezse 24 saat içinde otomatik temizlenir.";
+   $("#deleteCloudProject").classList.remove("hidden");
+   $("#renderResult").classList.remove("hidden");setProgress(100);
+   setStatus("#renderStatus","MP4 hazır. Şimdi iPhone'una indir; indirme tamamlanınca proje dosyalarını sil.");
+   return;
+  }
+  await new Promise(resolve=>setTimeout(resolve,3000));
+ }
+ throw Error("İş 6 saat içinde tamamlanmadı. Bulut işçisi/GitHub Actions durumunu kontrol et.");
+}
+async function resumeCloudJob(){
+ const id=localStorage.getItem("cf-cloud-job-id"),token=localStorage.getItem("cf-cloud-job-token");
+ if(!id||!token)return;
+ state.jobId=id;state.jobToken=token;
+ $("#editor").classList.remove("hidden");$("#renderPanel").classList.remove("hidden");
+ $("#startRender").disabled=true;$("#startRender").textContent="Bulut işi sürüyor…";
+ try{await pollCloudJob(id,$("#topicTitle").value.trim()||"Shorts");$("#startRender").textContent="Video hazır";}
+ catch(error){setStatus("#renderStatus","Kayıtlı bulut işi: "+error.message);$("#startRender").disabled=false;$("#startRender").textContent="Tekrar dene · Bulutta Shorts üret";}
+}
+async function deleteCloudProject(){
+ if(!state.jobId||!state.jobToken)return;
+ const button=$("#deleteCloudProject");button.disabled=true;button.textContent="Bulut dosyaları siliniyor…";
+ try{
+  const response=await fetch("/api/shorts/jobs/"+encodeURIComponent(state.jobId),{method:"DELETE",headers:{"X-Job-Token":state.jobToken}});
+  const data=await response.json();if(!response.ok)throw Error(data.error||"Silme başarısız.");
+  revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
+  state.videoUrl=state.audioUrl=state.creditsUrl=null;state.jobId=state.jobToken=null;
+  localStorage.removeItem("cf-cloud-job-id");localStorage.removeItem("cf-cloud-job-token");
+  try{await deleteVoice()}catch{}
+  state.reference=null;
+  $("#audioFile").value="";$("#visualFiles").value="";$("#scriptText").value="";$("#hookText").value="";$("#topicTitle").value="";
+  $("#referencePreview").removeAttribute("src");$("#referencePreview").classList.add("hidden");
+  $("#renderResult").classList.add("hidden");$("#deleteCloudProject").classList.add("hidden");
+  $("#renderStatus").textContent="Proje temizlendi. Bulut ses, metin, görseller, ara dosyalar ve MP4 silindi.";
+  $("#recordStatus").textContent="Bulut projesi silindi. Yeni Shorts için ses ve metin ekleyebilirsin.";
+  $("#startRender").disabled=true;$("#startRender").textContent="Bulutta Shorts üret";
+ }catch(error){setStatus("#renderStatus","Silme işlemi tamamlanamadı: "+error.message);button.disabled=false;button.textContent="İndirdim, projeyi sil"}
+}
 $("#settingsToggle").onclick=()=>$("#engineSettings").classList.toggle("hidden");
 // Remote engine controls removed: the renderer runs locally on iPhone.
 $("#startShorts").onclick=openShorts;
 $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 
-$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · hedef 40–45 saniye";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#scriptText").value.trim()?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";};
-$("#clearScript").onclick=()=>{$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · hedef 40–45 saniye";resetResult()};
-$("#startRender").onclick=approveAndRender;
-$("#downloadVideo").onclick=()=>{if(state.videoUrl){const a=document.createElement("a");a.href=state.videoUrl;a.download=(($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_"))+".mp4";a.click()}};
-$("#downloadCleanAudio").onclick=()=>{if(state.audioUrl){const a=document.createElement("a");a.href=state.audioUrl;a.download="shorts-cleaned-voice.wav";a.click()}};
-$("#downloadCredits").onclick=()=>{if(state.creditsUrl){const a=document.createElement("a");a.href=state.creditsUrl;a.download="sources-and-licenses.txt";a.click()}};
-$("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · hedef 40–45 saniye";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
-$("#engineUrl").value=localStorage.getItem("cf-engine-url")||"";$("#engineToken").value=localStorage.getItem("cf-engine-token")||"";loadReference();
+$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · cümleye göre sahne";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#scriptText").value.trim()?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";};
+$("#clearScript").onclick=()=>{$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult()};
+$("#startRender").onclick=approveAndRender;$("#deleteCloudProject").onclick=deleteCloudProject;
+$("#downloadVideo").onclick=()=>downloadBlob(state.videoUrl,($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4");
+$("#downloadCleanAudio").onclick=()=>downloadBlob(state.audioUrl,"shorts-cleaned-voice.wav");
+$("#downloadCredits").onclick=()=>downloadBlob(state.creditsUrl,"sources-and-licenses.txt");
+$("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#hookText").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
+$("#engineUrl").value="";$("#engineToken").value="";loadReference();
 
 
 function stopTracks(){if(state.recordStream){state.recordStream.getTracks().forEach(t=>t.stop());state.recordStream=null}}
@@ -203,4 +237,4 @@ function loadAgentHub(){
 $("#skillAction").addEventListener("click",runSelectedSkill);$("#scoreHooks").addEventListener("click",scoreHookCandidates);
 $("#closeSkill").addEventListener("click",()=>{$("#skillWorkspace").classList.add("hidden");activeSkill=null;document.querySelectorAll(".agent-skill").forEach(b=>b.classList.remove("active"))});
 $("#copySkillPrompt").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("#skillPrompt").value);setStatus("#agentStatus","Görev kopyalandı. Bu sohbet alanına yapıştırıp gönder.")}catch(e){$("#skillPrompt").focus();$("#skillPrompt").select();setStatus("#agentStatus","Metni seçip Kopyala komutunu kullan.")}});
-loadAgentHub();
+loadAgentHub();resumeCloudJob();
