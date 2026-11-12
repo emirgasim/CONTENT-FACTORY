@@ -44,7 +44,7 @@ A machine with Docker and enough RAM can run the same folder. Build and run the 
 ## Privacy and safety
 
 - Reference audio and generated audio pass through the configured engine. Uploaded reference audio is handled by the upstream MOSS app's temporary upload route; generated job files are stored in the engine's temporary directory.
-- Render job files are in-memory indexed and removed after `JOB_TTL_SECONDS` (default two hours) or container restart.
+- Render job files are stored in the container's temporary directory and removed opportunistically when a later job starts after `JOB_TTL_SECONDS` (default two hours), or when the container restarts.
 - Set a strong `FACTORY_API_TOKEN`; do not leave a public production engine unauthenticated.
 - Only upload a voice recording you own or are explicitly authorized to clone.
 - Wikimedia Commons assets are filtered to CC0, public-domain, CC BY and CC BY-SA categories where metadata is available. Each selected file's source and license are written to `sources-and-licenses.txt`. The user should still review the credit file and source page.
