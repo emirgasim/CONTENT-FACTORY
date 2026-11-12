@@ -97,6 +97,56 @@ function makeSceneStyles(count,seed){
  }
  return styles;
 }
+
+const contrastScratch=document.createElement("canvas");
+contrastScratch.width=contrastScratch.height=1;
+const contrastCtx=contrastScratch.getContext("2d",{willReadFrequently:true});
+function colorRgb(color){
+ contrastCtx.clearRect(0,0,1,1);
+ contrastCtx.fillStyle="#000000";
+ contrastCtx.fillStyle=color;
+ contrastCtx.fillRect(0,0,1,1);
+ const d=contrastCtx.getImageData(0,0,1,1).data;
+ return [d[0],d[1],d[2]];
+}
+function luminance(color){
+ const rgb=Array.isArray(color)?color:colorRgb(color);
+ const c=rgb.map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);});
+ return .2126*c[0]+.7152*c[1]+.0722*c[2];
+}
+function contrastRatio(a,b){
+ const l1=luminance(a),l2=luminance(b);
+ return (Math.max(l1,l2)+.05)/(Math.min(l1,l2)+.05);
+}
+function bestBlackWhite(background){
+ const black="#101018",white="#FFFFFF";
+ return contrastRatio(background,black)>=contrastRatio(background,white)?black:white;
+}
+function buildContrastSafeStyle(style){
+ const bg1=colorRgb(style.bg1),bg2=colorRgb(style.bg2);
+ const black="#101018",white="#FFFFFF";
+ const blackMin=Math.min(contrastRatio(bg1,black),contrastRatio(bg2,black));
+ const whiteMin=Math.min(contrastRatio(bg1,white),contrastRatio(bg2,white));
+ const plate=blackMin>=whiteMin?black:white;
+ const text=bestBlackWhite(plate);
+ const stickerText=bestBlackWhite(style.accent2);
+ const ratio=contrastRatio(plate,text);
+ if(ratio<7)throw Error("Kontrast denetimi bu sahne için güvenli metin çifti üretemedi.");
+ return {...style,textPlate:plate,textColor:text,stickerText,minContrast:ratio,plateContrast:Math.max(blackMin,whiteMin)};
+}
+function auditSceneContrast(styles){
+ let min=Infinity,failures=0;
+ const audited=styles.map(style=>{
+  let safe=buildContrastSafeStyle(style);
+  const ratio=contrastRatio(safe.textPlate,safe.textColor);
+  if(ratio<7){failures++;safe={...safe,textPlate:"#101018",textColor:"#FFFFFF"};}
+  min=Math.min(min,contrastRatio(safe.textPlate,safe.textColor));
+  return safe;
+ });
+ if(!audited.length||min<7)throw Error("Görsel kalite kontrolü: Yazı kontrastı yeterli değil. Render başlatılmadı.");
+ return {styles:audited,minContrast:min,scenes:audited.length,corrected:failures,passed:true};
+}
+
 function extractSearchTerms(text,title){
  const words=(text+" "+title).toLocaleLowerCase("tr-TR").match(/[\p{L}\p{N}]{3,}/gu)||[];
  const aliases={"oyun":"video game arcade","oyuncu":"video game","harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth","uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog","bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned","ürün":"product","ağaç":"tree","orman":"forest","deniz":"ocean","deprem":"earthquake","kirpik":"eyelashes","minecraft":"voxel game","pacman":"arcade game"};
@@ -244,16 +294,36 @@ function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles){
  if(style.layout%2){ctx.beginPath();for(let i=0;i<10;i++){const r=i%2?w*.055:w*.023,a=i*Math.PI/5-Math.PI/2;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}ctx.closePath();ctx.fill();}
  else{ctx.beginPath();ctx.arc(0,0,w*.045,0,Math.PI*2);ctx.fill();}
  ctx.restore();
- // Scene text is large, limited to the lower third and not repeated in a secondary strip.
- const caption=scene.caption.trim(),words=caption.split(/\s+/);let font=Math.round(w*(words.length<5?.082:words.length<9?.071:.063)),lines=[];
+ // Contrast-locked caption plaque: every line gets the same audited high-contrast plate.
+ const caption=scene.caption.trim();
+ let font=Math.round(w*(caption.split(/\s+/).length<5?.082:caption.split(/\s+/).length<9?.071:.063));
+ let lines=[];
  ctx.textAlign="center";ctx.textBaseline="middle";
- do{ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";lines=wrapLines(ctx,caption,w*.88,4);font-=2;}while(lines.length>3&&font>w*.047);
- const lineHeight=font*1.15,blockHeight=lines.length*lineHeight,startY=h*.735-blockHeight/2;
+ do{
+  ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";
+  lines=wrapLines(ctx,caption,w*.82,4);
+  if(lines.length>3)font-=2;
+ }while(lines.length>3&&font>w*.047);
+ const lineHeight=font*1.15;
+ const textWidths=lines.map(line=>ctx.measureText(line).width);
+ const plaqueWidth=Math.min(w*.91,Math.max(...textWidths)+w*.09);
+ const plaqueHeight=lines.length*lineHeight+font*.75;
+ const plaqueX=(w-plaqueWidth)/2;
+ const plaqueY=h*.735-plaqueHeight/2;
+ // Solid plate prevents any background/image from reducing glyph contrast.
+ ctx.save();
+ ctx.shadowColor="rgba(0,0,0,.25)";ctx.shadowBlur=w*.018;ctx.shadowOffsetY=h*.006;
+ rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,w*.018,style.textPlate);
+ ctx.restore();
+ ctx.fillStyle=style.textColor;
+ ctx.strokeStyle=style.textPlate;
+ ctx.lineJoin="round";
+ ctx.lineWidth=Math.max(1,w*.0015);
  lines.forEach((line,i)=>{
-  const yy=startY+i*lineHeight;
-  if(i===0&&lines.length>1){ctx.fillStyle=style.paper;const tw=Math.min(w*.9,ctx.measureText(line).width+w*.08);ctx.fillRect((w-tw)/2,yy-lineHeight*.43,tw,lineHeight*.86);ctx.fillStyle=style.ink;}
-  else ctx.fillStyle=style.ink;
-  ctx.lineWidth=Math.max(2,w*.004);ctx.strokeStyle=style.paper;ctx.strokeText(line,w/2+Math.sin(time*3+i)*w*.003,yy);ctx.fillText(line,w/2+Math.sin(time*3+i)*w*.003,yy);
+  const yy=plaqueY+font*.38+lineHeight*(i+.5);
+  const jitter=Math.sin(time*3+i)*w*.002;
+  ctx.strokeText(line,w/2+jitter,yy);
+  ctx.fillText(line,w/2+jitter,yy);
  });
  // Animated progress strip.
  ctx.fillStyle="rgba(0,0,0,.22)";ctx.fillRect(0,h*.982,w,h*.018);
@@ -287,12 +357,12 @@ async function renderLocally(){
  setProgress(10);setText("#renderStatus","Ses dalgası analiz ediliyor; konuşmayı koruyan sessizlik temizliği yapılıyor…");
  const analysis=detectSpeech(decoded),clean=concatenateAudio(decoded,analysis);
  if(clean.duration<4)throw Error("Temizlenmiş ses çok kısa. Farklı bir kayıt seç.");
- const timeline=timelineFor(text,clean.duration),seed=randomSeed(),styles=makeSceneStyles(timeline.length,seed);
+ const timeline=timelineFor(text,clean.duration),seed=randomSeed(),rawStyles=makeSceneStyles(timeline.length,seed),contrastAudit=auditSceneContrast(rawStyles),styles=contrastAudit.styles;
  const ownImages=await loadOwnImages(state.visualFiles||[]);
  setProgress(15);setText("#renderStatus",timeline.length+" sahne için internette açık lisanslı görseller aranıyor…");
  const found=await searchSceneAssets(timeline,title,ownImages),assets=found.assets;
  const imageCount=assets.filter(Boolean).length;
- setProgress(30);setText("#renderStatus",imageCount+" sahne görseli bulundu. Merkez kadraj ve renkli arka planlar hazırlanıyor…");
+ setProgress(30);setText("#renderStatus",imageCount+" sahne görseli bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
  const ctx=canvas.getContext("2d",{alpha:false});if(!ctx)throw Error("Canvas çizim alanı açılamadı.");
@@ -331,7 +401,7 @@ async function renderLocally(){
  finally{await cleanup();}
  revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
  state.videoUrl=URL.createObjectURL(blob);state.audioUrl=URL.createObjectURL(wavBlob(clean));
- const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu",""];
+ const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
  for(let i=0;i<assets.length;i++){const item=assets[i];if(!item)continue;if(item.own){creditLines.push("Sahne "+(i+1)+": Kullanıcının yüklediği görsel — "+item.title);}else{creditLines.push("Sahne "+(i+1)+": "+item.title,"Yazar: "+item.author,"Lisans: "+item.license,"Lisans bağlantısı: "+item.licenseUrl,"Dosya sayfası: "+item.pageUrl,"");}}
  if(!imageCount)creditLines.push("Commons aramasında uygun görsel bulunamadı; bu sahneler özgün grafik illüstrasyonlarıyla oluşturuldu.");
  creditLines.push("Not: Wikimedia Commons dosyalarının her biri kendi dosya sayfasındaki lisans ve atıf koşullarıyla yeniden kullanılmalıdır.");
