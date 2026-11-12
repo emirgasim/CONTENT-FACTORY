@@ -208,7 +208,7 @@ async function renderLocally() {
       else resolve(blob);
     };
     source.onended=stopRecorder;
-    recorder.start(1000);
+    recorder.start();
     const frame=now=>{
       if(stopped)return;
       if(!started)started=now;
