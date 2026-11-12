@@ -367,7 +367,8 @@ async function verifyVideoDuration(blob,expected){
 }
 async function renderLocally(){
  const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),file=state.reference;
- if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");\n if(!hook)throw Error("Her Shorts için üstte görünecek kanca yazısını gir.");
+ if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");
+ if(!hook)throw Error("Her Shorts için üstte görünecek kanca yazısını gir.");
  const Audio=window.AudioContext||window.webkitAudioContext;
  if(!Audio||!HTMLCanvasElement.prototype.captureStream||!window.MediaRecorder)throw Error("Safari bu iPhone'da yerel video üretimini desteklemiyor.");
  const mime=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4"].find(x=>MediaRecorder.isTypeSupported(x));
