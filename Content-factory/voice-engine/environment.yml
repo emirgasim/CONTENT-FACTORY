@@ -1,0 +1,9 @@
+name: content-factory
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - ffmpeg
+  - libsndfile
+  - pynini=2.1.6.post1
