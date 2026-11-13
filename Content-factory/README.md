@@ -14,8 +14,9 @@ Shorts rendering runs on a temporary GitHub-hosted Linux runner, not in iPhone S
 ## One-time Cloudflare setup
 
 1. In Cloudflare Pages, confirm the Workers KV namespace ID in `wrangler.toml` is the intended namespace and the binding name is exactly `SHORTS_TEMP` for Production (and Preview only if testing previews).
-3. In Pages Settings → Variables and Secrets, add the production secret `GITHUB_ACTIONS_TOKEN`. Use a GitHub fine-grained token restricted to this repository with Actions: Read and write permission. This token is server-side only and is never sent to the browser.
-4. Redeploy the Pages project after adding the R2 binding and secret.
+2. In Pages Settings → Variables and Secrets, add `GITHUB_ACTIONS_TOKEN` (GitHub fine-grained token restricted to this repository with Actions: Read and write), `CF_WORKER_SECRET` (a long random shared secret), and `CONTENT_FACTORY_URL` (the deployed Pages origin, for example `https://your-project.pages.dev`). The GitHub token and worker secret are server-side only and must never be sent to the browser.
+3. Add the same `CF_WORKER_SECRET` and `CONTENT_FACTORY_URL` values as GitHub Actions repository secrets. The workflow worker uses them to authenticate to Pages internal routes.
+4. Redeploy the Pages project after setting bindings and secrets.
 
 ## One-time GitHub setup
 
