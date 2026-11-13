@@ -1,5 +1,5 @@
 // Cloudflare deployment trigger: ensure Pages picks up the latest main revision.
-const MAX_AUDIO=30*1024*1024,MAX_TEXT=30000,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
+const MAX_AUDIO=30*1024*1024,MAX_TEXT=30000,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024,MAX_JOBS_PER_UTC_DAY=30;
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const mediaKey=(key,part)=>key+"/"+part;
 async function putMedia(bucket,key,file){const buffer=await file.arrayBuffer(),parts=Math.ceil(buffer.byteLength/CHUNK);for(let i=0;i<parts;i++){const start=i*CHUNK,end=Math.min(start+CHUNK,buffer.byteLength);await bucket.put(mediaKey(key,i),buffer.slice(start,end),{httpMetadata:{contentType:file.type||"application/octet-stream"}});}return {key,parts,size:buffer.byteLength};}
@@ -21,7 +21,11 @@ export async function onRequestPost({request,env}){
  const images=[];
  if(images.length>MAX_IMAGES||images.some(x=>x.size>MAX_IMAGE))return json({error:"En fazla 8 referans görsel, her biri en fazla 8 MB olabilir."},413);
  const now=Date.now();
- // No arbitrary per-IP/hourly production quota. Infrastructure/provider limits still apply.
+ // Conservative daily circuit breaker keeps metadata/status writes well below the 1,000/day free KV PUT cap.
+ const day=new Date(now).toISOString().slice(0,10),budgetKey="usage/daily-jobs/"+day;
+ const used=Number(await kv.get(budgetKey)||0);
+ if(used>=MAX_JOBS_PER_UTC_DAY)return json({error:"Günlük ücretsiz kullanım koruması devrede. Bugün en fazla "+MAX_JOBS_PER_UTC_DAY+" yeni proje başlatılabilir; sayaç UTC gece yarısında sıfırlanır."},429);
+ await kv.put(budgetKey,String(used+1),{expirationTtl:172800});
  const id=crypto.randomUUID().replace(/-/g,""),ownerToken=hex(crypto.getRandomValues(new Uint8Array(32))),prefix="jobs/"+id+"/";
  try{
   const audioName=inputMode==="audio"?safeName(audio.name,"narration.m4a"):"",audioFile=inputMode==="audio"?await putMedia(media,prefix+"input/audio",audio):null;
