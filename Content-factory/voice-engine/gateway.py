@@ -1201,7 +1201,7 @@ def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Pa
     if result.returncode != 0 or not output.exists():
         raise RuntimeError("Sahne render edilemedi: " + result.stderr[-900:])
 
-def render_short_job(job_id: str) -> None:
+def render_short_job(job_id: str, approved_scene_assets: list[tuple[Path, dict[str, str]]] | None = None) -> None:
     # The editing agent owns the narration timeline; every downstream visual and
     # caption timestamp is remapped to the exact edited WAV timeline.
     with JOBS_LOCK:
@@ -1279,141 +1279,157 @@ def render_short_job(job_id: str) -> None:
             encoding="utf-8",
         )
 
-        update_job(job_id, progress=34, message="Her cümle için anlatıma uygun görseller aranıyor…")
-        source_records: list[dict[str, str]] = []
-        scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
-        used_scene_paths: set[Path] = set()
-        user_images: list[Path] = []
-        for name in job.get("user_images", []):
-            path = work_dir / Path(name).name
-            if path.is_file():
-                try:
-                    with Image.open(path) as image:
-                        image.verify()
-                    user_images.append(path)
-                except Exception:
-                    pass
-
-        # Every scene must obtain and pass its own visual match. A video-wide
-        # topic cache is intentionally not used as a fallback for unrelated beats.
-        downloaded_asset_cache: dict[str, tuple[Path, dict[str, str]]] = {}
-        query_cache: dict[str, list[dict[str, str]]] = {}
-
-        for idx, group in enumerate(groups):
-            scene_text = re.sub(r"\s+", " ", str(group.get("text", "")).strip())
-            previous_text = str(groups[idx - 1].get("text", "")).strip() if idx > 0 else ""
-            next_text = str(groups[idx + 1].get("text", "")).strip() if idx + 1 < len(groups) else ""
-            visual_brief = (
-                "Story topic: " + str(title)[:100]
-                + ". Exact narrated scene: " + scene_text[:180]
-                + (". Nearby context: " + previous_text[:70] + " " + next_text[:70] if previous_text or next_text else "")
-            )[:420]
-
-            # Search the story topic AND the exact beat first. Previously the
-            # generic beat query often returned three unrelated results and
-            # stopped the search before the story-specific query was attempted.
-            query_variants = []
-            for query in (
-                translate_visual_query(str(title) + " " + scene_text),
-                translate_visual_query(scene_text),
-                english_visual_query(str(title) + " " + scene_text),
-                extract_keywords(str(title) + " " + scene_text),
-            ):
-                query = re.sub(r"\s+", " ", str(query or "")).strip()
-                if query and query.lower() not in {x.lower() for x in query_variants}:
-                    query_variants.append(query[:180])
-
-            scene_pairs: list[tuple[Path, dict[str, str]]] = []
-            scene_seen_urls: set[str] = set()
-            for query_attempt, scene_query in enumerate(query_variants[:4]):
-                cache_key = re.sub(r"\s+", " ", scene_query.lower()).strip()
-                candidates = query_cache.get(cache_key)
-                if candidates is None:
+        if approved_scene_assets is not None:
+            if len(approved_scene_assets) != len(groups):
+                raise RuntimeError("Onaylanan görsel sayısı sahne sayısıyla eşleşmiyor.")
+            scene_assets = []
+            source_records = []
+            for scene_index, pair in enumerate(approved_scene_assets):
+                path, metadata = pair
+                if not path.is_file():
+                    raise RuntimeError("Onaylanan sahne görseli bulunamadı: " + str(scene_index + 1))
+                with Image.open(path) as image:
+                    image.verify()
+                scene_assets.append([(path, metadata)])
+                source_records.append(metadata)
+            verified_scene_count = len(scene_assets)
+        else:
+            update_job(job_id, progress=34, message="Her cümle için anlatıma uygun görseller aranıyor…")
+            source_records: list[dict[str, str]] = []
+            scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
+            used_scene_paths: set[Path] = set()
+            user_images: list[Path] = []
+            for name in job.get("user_images", []):
+                path = work_dir / Path(name).name
+                if path.is_file():
                     try:
-                        candidates = search_public_assets(scene_query, limit=24)
-                        query_cache[cache_key] = candidates
-                    except Exception as search_error:
-                        print("[visual-search] scene query failed:", idx + 1, type(search_error).__name__, str(search_error)[:180])
-                        candidates = []
-                        query_cache[cache_key] = []
-
-                for candidate in candidates[:16]:
-                    url = str(candidate.get("url") or "").strip()
-                    if not url or url in scene_seen_urls:
-                        continue
-                    scene_seen_urls.add(url)
-                    cached_pair = downloaded_asset_cache.get(url)
-                    if cached_pair is not None:
-                        if cached_pair[0] not in used_scene_paths:
-                            scene_pairs.append(cached_pair)
-                        continue
-                    asset_path = download_image_asset(candidate, work_dir, len(source_records) + len(scene_pairs) + 1)
-                    if not asset_path:
-                        continue
-                    pair = (asset_path, candidate)
-                    downloaded_asset_cache[url] = pair
-                    scene_pairs.append(pair)
+                        with Image.open(path) as image:
+                            image.verify()
+                        user_images.append(path)
+                    except Exception:
+                        pass
+    
+            # Every scene must obtain and pass its own visual match. A video-wide
+            # topic cache is intentionally not used as a fallback for unrelated beats.
+            downloaded_asset_cache: dict[str, tuple[Path, dict[str, str]]] = {}
+            query_cache: dict[str, list[dict[str, str]]] = {}
+    
+            for idx, group in enumerate(groups):
+                scene_text = re.sub(r"\s+", " ", str(group.get("text", "")).strip())
+                previous_text = str(groups[idx - 1].get("text", "")).strip() if idx > 0 else ""
+                next_text = str(groups[idx + 1].get("text", "")).strip() if idx + 1 < len(groups) else ""
+                visual_brief = (
+                    "Story topic: " + str(title)[:100]
+                    + ". Exact narrated scene: " + scene_text[:180]
+                    + (". Nearby context: " + previous_text[:70] + " " + next_text[:70] if previous_text or next_text else "")
+                )[:420]
+    
+                # Search the story topic AND the exact beat first. Previously the
+                # generic beat query often returned three unrelated results and
+                # stopped the search before the story-specific query was attempted.
+                query_variants = []
+                for query in (
+                    translate_visual_query(str(title) + " " + scene_text),
+                    translate_visual_query(scene_text),
+                    english_visual_query(str(title) + " " + scene_text),
+                    extract_keywords(str(title) + " " + scene_text),
+                ):
+                    query = re.sub(r"\s+", " ", str(query or "")).strip()
+                    if query and query.lower() not in {x.lower() for x in query_variants}:
+                        query_variants.append(query[:180])
+    
+                scene_pairs: list[tuple[Path, dict[str, str]]] = []
+                scene_seen_urls: set[str] = set()
+                for query_attempt, scene_query in enumerate(query_variants[:4]):
+                    cache_key = re.sub(r"\s+", " ", scene_query.lower()).strip()
+                    candidates = query_cache.get(cache_key)
+                    if candidates is None:
+                        try:
+                            candidates = search_public_assets(scene_query, limit=24)
+                            query_cache[cache_key] = candidates
+                        except Exception as search_error:
+                            print("[visual-search] scene query failed:", idx + 1, type(search_error).__name__, str(search_error)[:180])
+                            candidates = []
+                            query_cache[cache_key] = []
+    
+                    for candidate in candidates[:16]:
+                        url = str(candidate.get("url") or "").strip()
+                        if not url or url in scene_seen_urls:
+                            continue
+                        scene_seen_urls.add(url)
+                        cached_pair = downloaded_asset_cache.get(url)
+                        if cached_pair is not None:
+                            if cached_pair[0] not in used_scene_paths:
+                                scene_pairs.append(cached_pair)
+                            continue
+                        asset_path = download_image_asset(candidate, work_dir, len(source_records) + len(scene_pairs) + 1)
+                        if not asset_path:
+                            continue
+                        pair = (asset_path, candidate)
+                        downloaded_asset_cache[url] = pair
+                        scene_pairs.append(pair)
+                        if len(scene_pairs) >= 18:
+                            break
                     if len(scene_pairs) >= 18:
                         break
-                if len(scene_pairs) >= 18:
-                    break
-                print("[visual-search] trying next story-specific query:", idx + 1, query_attempt + 1, scene_query)
-
-            # Only a high-confidence pixel-level scene match is eligible.
-            # No general-topic reserve and no keyword-overlap fallback.
-            selected: tuple[Path, dict[str, str]] | None = None
-            ranked_scene = rank_scene_images(visual_brief, scene_pairs)
-            for score, pair in ranked_scene:
-                if pair[0] not in used_scene_paths and pair[1].get("visual_match_verified") == "true":
-                    selected = pair
-                    used_scene_paths.add(pair[0])
-                    break
-
-            # User-provided photos are an explicit override; generated text cards
-            # and arbitrary external search results are never used as substitutes.
-            if selected is None and user_images:
-                own_path = user_images[idx % len(user_images)]
-                selected = (own_path, {
-                    "title": own_path.name,
-                    "author": "User supplied",
-                    "license": "User supplied; verify your own rights",
-                    "license_url": "",
-                    "page_url": "",
-                    "url": "",
-                    "source": "User upload",
-                })
-
-            if selected is None:
-                raise RuntimeError(
-                    "Sahne " + str(idx + 1) + "/" + str(len(groups))
-                    + " için anlatımla görsel olarak doğrulanmış fotoğraf bulunamadı: "
-                    + scene_text[:180]
-                    + ". Bu nedenle alakasız görselle video üretimi durduruldu."
+                    print("[visual-search] trying next story-specific query:", idx + 1, query_attempt + 1, scene_query)
+    
+                # Only a high-confidence pixel-level scene match is eligible.
+                # No general-topic reserve and no keyword-overlap fallback.
+                selected: tuple[Path, dict[str, str]] | None = None
+                ranked_scene = rank_scene_images(visual_brief, scene_pairs)
+                for score, pair in ranked_scene:
+                    if pair[0] not in used_scene_paths and pair[1].get("visual_match_verified") == "true":
+                        selected = pair
+                        used_scene_paths.add(pair[0])
+                        break
+    
+                # User-provided photos are an explicit override; generated text cards
+                # and arbitrary external search results are never used as substitutes.
+                if selected is None and user_images:
+                    own_path = user_images[idx % len(user_images)]
+                    selected = (own_path, {
+                        "title": own_path.name,
+                        "author": "User supplied",
+                        "license": "User supplied; verify your own rights",
+                        "license_url": "",
+                        "page_url": "",
+                        "url": "",
+                        "source": "User upload",
+                    })
+    
+                if selected is None:
+                    raise RuntimeError(
+                        "Sahne " + str(idx + 1) + "/" + str(len(groups))
+                        + " için anlatımla görsel olarak doğrulanmış fotoğraf bulunamadı: "
+                        + scene_text[:180]
+                        + ". Bu nedenle alakasız görselle video üretimi durduruldu."
+                    )
+    
+                source_records.append(selected[1])
+                scene_assets.append([selected])
+                progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
+                update_job(
+                    job_id,
+                    progress=progress,
+                    message="Sahneler görsel olarak doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
                 )
-
-            source_records.append(selected[1])
-            scene_assets.append([selected])
-            progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
-            update_job(
-                job_id,
-                progress=progress,
-                message="Sahneler görsel olarak doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
+    
+            verified_scene_count = sum(
+                1 for assets in scene_assets
+                if assets and (
+                    assets[0][1].get("visual_match_verified") == "true"
+                    or assets[0][1].get("source") == "User upload"
+                )
             )
-
-        verified_scene_count = sum(
-            1 for assets in scene_assets
-            if assets and (
-                assets[0][1].get("visual_match_verified") == "true"
-                or assets[0][1].get("source") == "User upload"
-            )
-        )
-        if verified_scene_count != len(scene_assets):
-            raise RuntimeError(
-                "Görsel kalite kontrolü başarısız: "
-                + str(verified_scene_count) + "/" + str(len(scene_assets))
-                + " sahne doğrulandı. Alakasız fotoğraf veya yazı kartı içeren video teslim edilmedi."
-            )
-
+            if verified_scene_count != len(scene_assets):
+                raise RuntimeError(
+                    "Görsel kalite kontrolü başarısız: "
+                    + str(verified_scene_count) + "/" + str(len(scene_assets))
+                    + " sahne doğrulandı. Alakasız fotoğraf veya yazı kartı içeren video teslim edilmedi."
+                )
+    
+    
         clips = []
         for idx, group in enumerate(groups):
             scene_start = float(group.get("start", 0.0))
