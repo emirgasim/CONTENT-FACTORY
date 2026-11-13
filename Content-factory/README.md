@@ -34,20 +34,20 @@ Create an R2 API token with object read/write access limited to this bucket. Do 
 
 ## Temporary storage and cleanup
 
-- Project objects are stored under `jobs/{job_id}/` in a private R2 bucket: input audio, script/hook metadata, reference images, status, intermediate outputs, final MP4, cleaned WAV and license report.
+- Project objects are stored under `jobs/{job_id}/` in the private `SHORTS_TEMP` Workers KV namespace: input audio, hook metadata, candidate images, review manifest, approved selections, status, MP4, cleaned WAV and source report.
 - Each project has a random per-job owner token. Status, download and delete routes require this token.
 - After the user downloads the MP4 and confirms, the Pages Function deletes every object under that job prefix.
-- Scheduled fallback cleanup expires unconfirmed projects after 24 hours and runs every six hours; therefore storage cleanup may happen up to approximately six hours after the 24-hour expiry.
-- Per-IP submission guard: at most four jobs per hour. Old rate-limit counters are also cleaned by the scheduled worker.
+- Every KV object is written with a 24-hour TTL. Unconfirmed projects therefore expire automatically without relying on a scheduled R2 cleanup task.
+- KV object expiration is the fallback cleanup. Manual deletion removes the full project prefix immediately.
 - The `SHORTS_TEMP` KV namespace is private to Pages Functions. Do not expose the worker secret or job owner tokens. All job keys are prefixed by a random job ID and expire after 24 hours.
 
 ## Render environment
 
-- GitHub-hosted `ubuntu-latest` runner, FFmpeg, Python 3.12, Pillow, Requests, faster-whisper and boto3.
+- GitHub-hosted `ubuntu-latest` runner, FFmpeg, Python 3.12, Pillow, Requests, faster-whisper, CPU PyTorch and Transformers/CLIP.
 - Whisper model weights are cached between compatible workflow runs where possible.
 - One render job has a 90-minute workflow timeout. The number and duration of jobs are subject to the GitHub Actions plan's included runner minutes and concurrency limits.
-- R2 storage and operations are subject to the Cloudflare plan's quotas and pricing. Immediate delete-after-download plus 24-hour expiry minimizes retained media but does not make compute/storage literally unlimited.
-- No media files are committed to GitHub. Audio and generated videos are held in private R2 and ephemeral runner storage.
+- Workers KV and GitHub Actions usage are subject to their respective plan quotas and runner-minute limits. Immediate delete-after-download plus 24-hour expiry minimizes retained media but does not make compute/storage unlimited.
+- No media files are committed to GitHub. Audio, candidate images and output files are held in private KV and ephemeral runner storage.
 
 ## Open image sources
 
