@@ -23,9 +23,23 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Mark cloud worker as started
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          CONTENT_FACTORY_URL: ${{ secrets.CONTENT_FACTORY_URL }}
+          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+        run: |
+          test -n "$CONTENT_FACTORY_URL" || { echo "CONTENT_FACTORY_URL secret is missing"; exit 1; }
+          test -n "$CF_WORKER_SECRET" || { echo "CF_WORKER_SECRET secret is missing"; exit 1; }
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 \
+            -X PUT "$CONTENT_FACTORY_URL/api/internal/shorts/jobs/$JOB_ID" \
+            -H "X-Factory-Worker-Secret: $CF_WORKER_SECRET" \
+            -H "Content-Type: application/json" \
+            --data '{"status":"processing","progress":1,"message":"Bulut işçisi başladı; render ortamı hazırlanıyor."}'
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
