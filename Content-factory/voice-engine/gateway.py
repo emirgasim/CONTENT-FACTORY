@@ -404,8 +404,6 @@ def search_commons(query: str, limit: int = 20) -> list[dict[str, str]]:
             continue
         meta = info.get("extmetadata") or {}
         license_name = plain_text((meta.get("LicenseShortName") or {}).get("value"))
-        if not license_allowed(license_name):
-            continue
         url = info.get("thumburl") or info.get("url")
         if not url:
             continue
@@ -439,8 +437,6 @@ def search_openverse(query: str, limit: int = 20) -> list[dict[str, str]]:
     items = []
     for item in results:
         license_name = str(item.get("license") or "").lower()
-        if not license_allowed(license_name):
-            continue
         image_url = item.get("thumbnail") or item.get("url")
         page_url = item.get("foreign_landing_url") or item.get("detail_url")
         if not image_url or not page_url:
@@ -765,7 +761,7 @@ def extract_keywords(text: str) -> str:
     return " ".join(selected) or (text or "")[:80]
 
 
-def download_commons_asset(item: dict[str, str], directory: Path, index: int) -> Path | None:
+def download_image_asset(item: dict[str, str], directory: Path, index: int) -> Path | None:
     try:
         response = requests.get(item["url"], headers={"User-Agent": USER_AGENT}, timeout=30, stream=True)
         response.raise_for_status()
@@ -778,7 +774,7 @@ def download_commons_asset(item: dict[str, str], directory: Path, index: int) ->
                 content.extend(chunk)
                 if len(content) > 18 * 1024 * 1024:
                     return None
-        path = directory / ("commons-" + str(index) + ".img")
+        path = directory / ("web-image-" + str(index) + ".img")
         path.write_bytes(content)
         with Image.open(path) as image:
             image.verify()
@@ -1024,7 +1020,7 @@ def render_short_job(job_id: str) -> None:
                 url = candidate.get("url", "")
                 if not url or url in seen_asset_urls:
                     continue
-                asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
+                asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
                 if not asset_path:
                     continue
                 selected = (asset_path, candidate)
@@ -1078,9 +1074,9 @@ def render_short_job(job_id: str) -> None:
                 }))
             scene_assets.append(chosen)
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
-            update_job(job_id, progress=progress, message="Her sahneye farklı görsel aranıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
+            update_job(job_id, progress=progress, message="Her sahne için farklı kaynaklardan görsel aranıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
         if not stock_pool:
-            raise RuntimeError("Bu sahne için indirilebilir ve görüntü olarak doğrulanabilen gerçek görsel bulunamadı. Başka arama terimleriyle tekrar dene.")
+            raise RuntimeError("Web kaynaklarından indirilebilir ve doğrulanabilir görsel alınamadı. Arama servisleri geçici olarak erişimi engellemiş olabilir; yeniden dene.")
 
         clips = []
         total_duration = duration
