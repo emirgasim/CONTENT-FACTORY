@@ -80,3 +80,16 @@ The Python render engine searches Wikimedia Commons, Openverse and Library of Co
 - The renderer is procedural Pillow pixel art plus FFmpeg: rotating bright poster backgrounds, thin geometric outlines, a consistent dark rounded retro window, topic-specific moving pixel motifs, and bold white captions with a thick dark outline. It does not fetch or embed stock photos or external artwork.
 - Current semantic motif families include retro arcade, Minecraft/block world, cartoon, film, space, science, history, money, animals, sport, computers/technology, city/travel, music, nature and mystery. Unclassified beats use the mystery visual as a safe fallback.
 - Output is MP4 at 1080×1920, 30 FPS, with the narration audio when provided. Text-only mode is intentionally silent. Temporary inputs and output continue to use the existing 24-hour KV expiry and explicit delete-after-download flow.
+
+
+## R2 media storage and KV write protection
+
+- Large/binary data is stored in the R2 bucket content-factory-media through the Pages binding SHORTS_MEDIA: uploaded narration, candidate photographs, worker output chunks, final MP4, cleaned audio and source-credit text.
+- Workers KV binding SHORTS_TEMP now stores only small job metadata, owner-token hashes, status, selections, review/output manifests and the daily usage guard.
+- R2 object keys retain the jobs/<job-id>/... prefix. Explicit project deletion removes both KV metadata and all matching R2 objects.
+- Configure an R2 lifecycle rule for prefix jobs/ with expiration after 1 day as a safety net. R2 lifecycle deletion is asynchronous; explicit delete-after-download remains the primary cleanup.
+- Create the bucket once before deploying the Wrangler config: npx wrangler r2 bucket create content-factory-media.
+- The Pages project must have the SHORTS_MEDIA R2 binding to that bucket in production (and preview if preview deployments are used). Wrangler config declares this binding.
+- The Pages job-creation endpoint applies a conservative maximum of 30 new projects per UTC day. Progress status writes are coalesced; state transitions are still saved immediately. This is a circuit breaker, not a billing guarantee.
+- R2 free-tier quotas and account usage must still be monitored in the Cloudflare dashboard. The app stops starting new jobs at its own daily KV budget, but it cannot query Cloudflare billing usage directly.
+- To create the one-day lifecycle rule with Wrangler: npx wrangler r2 bucket lifecycle add content-factory-media cf-temp-cleanup jobs/ --expire-days 1.
