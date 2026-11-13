@@ -2,10 +2,12 @@ name = "content-factory"
 compatibility_date = "2026-11-12"
 pages_build_output_dir = "./public"
 
+[ai]
+binding = "AI"
+
 [[kv_namespaces]]
 binding = "SHORTS_TEMP"
 id = "f4d23ed38fb94097aacc44fb142b2b07"
 
-
-# Create a Cloudflare Workers KV namespace and bind it in Pages as SHORTS_TEMP.
-# Do not configure an R2 bucket. KV values are chunked below 16 MiB and expire after 24 hours.
+# Workers AI powers the autonomous editor command agent.
+# KV stores temporary media and project metadata; do not configure an R2 bucket.
