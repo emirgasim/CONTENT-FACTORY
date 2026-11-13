@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Content Factory — Bulut Video Editörü & Yapay Zekâ Yönetmeni</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #141822;
+      --panel-2: #1c2230;
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f3f5f9;
+      --muted: #98a2b3;
+      --accent: #facc15;
+      --accent-2: #ef4444;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      touch-action: manipulation;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { font-weight: 700; font-size: 1rem; letter-spacing: 0.02em; }
+    .brand span { color: var(--accent); }
+    .badge {
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+    .badge.ok { border-color: var(--ok); color: #86efac; }
+    .badge.warn { border-color: var(--warn); color: #fde68a; }
+    .badge.err { border-color: var(--err); color: #fca5a5; }
+    main {
+      display: grid;
+      grid-template-columns: 360px 1fr 340px;
+      gap: 12px;
+      padding: 12px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    @media (max-width: 1120px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      color: var(--accent);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    label { font-size: 0.82rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+    }
+    button {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #111; border-color: var(--accent); }
+    button.danger { background: rgba(239,68,68,0.16); border-color: var(--err); color: #fecaca; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .preview-stage {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+      aspect-ratio: 9 / 16;
+      margin: 0 auto;
+      background: #000;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .preview-stage img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+    .preview-caption {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 42px;
+      text-align: center;
+      background: rgba(0,0,0,0.68);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .multitrack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #0e1118;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    .track-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+    }
+    .track-label {
+      min-width: 82px;
+      font-size: 0.74rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .track-clips {
+      display: flex;
+      gap: 6px;
+      flex: 1;
+    }
+    .clip {
+      min-width: 96px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      font-size: 0.76rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .clip.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .clip.caption-clip { background: #1e293b; }
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+      gap: 8px;
+    }
+    .opt-card {
+      border: 2px solid transparent;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel-2);
+      cursor: pointer;
+      padding: 0;
+    }
+    .opt-card.selected { border-color: var(--accent); }
+    .opt-card img { width: 100%; height: 76px; object-fit: cover; display: block; }
+    .opt-card small { display: block; padding: 4px; font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ai-log {
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px;
+      background: #0e1118;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .ai-msg { font-size: 0.84rem; padding: 8px 10px; border-radius: 8px; line-height: 1.4; }
+    .ai-msg.user { background: #1f2937; align-self: flex-end; }
+    .ai-msg.assistant { background: #172554; align-self: flex-start; }
+    .ai-msg.system { background: #1e293b; color: var(--muted); font-size: 0.78rem; }
+    .proposal-box {
+      border: 1px solid var(--accent);
+      background: rgba(250, 204, 21, 0.08);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.84rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">CONTENT <span>FACTORY</span> · Bulut Editörü</div>
+    <div class="row">
+      <span id="jobStatusBadge" class="badge">Hazır</span>
+      <span id="aiStatusBadge" class="badge">Ajan Kontrol Ediliyor...</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- SOL PANEL: ÖNİZLEME & PROJE YÖNETİMİ -->
+    <section class="card">
+      <h2>1. Ses Yükle & Önizleme</h2>
+      <div>
+        <label for="projectHook">Video Başlığı / Kanca</label>
+        <input type="text" id="projectHook" placeholder="Örn: Yapay zekâ ile 60 saniyede kurgu" />
+      </div>
+      <div>
+        <label for="audioFile">Seslendirme (MP3 / WAV / M4A)</label>
+        <input type="file" id="audioFile" accept="audio/*" />
+      </div>
+      <div class="row">
+        <button id="startJobBtn" class="primary">Bulutta Analiz Et ve Sahne Oluştur</button>
+        <button id="saveProjectBtn">Projeyi Kaydet</button>
+      </div>
+      <div>
+        <label for="savedProjects">Kayıtlı Projeler</label>
+        <div class="row">
+          <select id="savedProjects"></select>
+          <button id="loadProjectBtn">Aç</button>
+        </div>
+      </div>
+
+      <div class="preview-stage">
+        <img id="previewImg" alt="Sahne önizlemesi" />
+        <div id="previewCaption" class="preview-caption">Sahne bekleniyor...</div>
+      </div>
+
+      <audio id="voicePlayer" controls style="width:100%"></audio>
+      <div class="row" style="justify-content:space-between;">
+        <button id="playSyncBtn">▶ Senkron Oynat</button>
+        <span id="timeReadout" class="badge">0.0s / 0.0s</span>
+      </div>
+    </section>
+
+    <!-- ORTA PANEL: ÇOK KANALLI ZAMAN ÇİZELGESİ & SAHNE DENETÇİSİ -->
+    <section class="card">
+      <h2>2. Çok Kanallı Zaman Çizelgesi & Kurgu</h2>
+      <div class="multitrack">
+        <div class="track-row">
+          <div class="track-label">Görsel / Sahne</div>
+          <div id="visualTrack" class="track-clips"></div>
+        </div>
+        <div class="track-row">
+          <div class="track-label">Altyazı</div>
+          <div id="captionTrack" class="track-clips"></div>
+        </div>
+        <div class="track-row">
+          <div class="track-label">Ses & Müzik</div>
+          <div class="track-clips" style="align-items:center; gap:12px;">
+            <span style="font-size:0.78rem;">Seslendirme: <strong id="voiceVolVal">100%</strong></span>
+            <input id="voiceVol" type="range" min="0" max="200" value="100" />
+            <span style="font-size:0.78rem;">Müzik: <strong id="musicVolVal">35%</strong></span>
+            <input id="musicVol" type="range" min="0" max="150" value="35" />
+          </div>
+        </div>
+      </div>
+
+      <div id="sceneInspector" hidden>
+        <div class="row" style="justify-content:space-between;">
+          <strong id="inspectorTitle">Sahne 1</strong>
+          <div class="row">
+            <button id="moveLeftBtn">◀ Sola</button>
+            <button id="moveRightBtn">Sağa ▶</button>
+            <button id="moveStartBtn">Başa Al</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="flex:1; min-width:120px;">
+            <label for="sceneDuration">Süre (sn)</label>
+            <input type="number" id="sceneDuration" step="0.1" min="0.4" max="180" />
+          </div>
+          <div style="flex:1; min-width:150px;">
+            <label for="sceneTransition">Geçiş Efekti</label>
+            <select id="sceneTransition">
+              <option value="cut">Keskin Geçiş (Cut)</option>
+              <option value="fade">Kararma (Fade)</option>
+              <option value="dissolve">Sinematik Erime (Dissolve)</option>
+              <option value="zoom_in">Yakınlaşma Geçişi</option>
+              <option value="slide_left">Sola Kaydırma</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="flex:1;">
+            <label for="frameScale">Zoom (<span id="frameScaleVal">1.0</span>x)</label>
+            <input type="range" id="frameScale" min="0.8" max="2.5" step="0.05" value="1.0" />
+          </div>
+          <div style="flex:1;">
+            <label for="framePanX">Kadraj X (<span id="framePanXVal">0</span>%)</label>
+            <input type="range" id="framePanX" min="-50" max="50" step="1" value="0" />
+          </div>
+          <div style="flex:1;">
+            <label for="framePanY">Kadraj Y (<span id="framePanYVal">0</span>%)</label>
+            <input type="range" id="framePanY" min="-50" max="50" step="1" value="0" />
+          </div>
+        </div>
+
+        <div>
+          <label for="sceneCaption">Altyazı / Metin Katmanı</label>
+          <textarea id="sceneCaption" rows="2"></textarea>
+        </div>
+
+        <div>
+          <label>Sahne Görseli & Açık Kaynak Arama</label>
+          <div class="row" style="margin-bottom:8px;">
+            <input type="text" id="visualQuery" placeholder="Açık kaynaklarda görsel ara (Openverse, Wikimedia, LOC)..." style="flex:1;" />
+            <button id="visualSearchBtn">Görsel Ara</button>
+          </div>
+          <div id="optionsGrid" class="options-grid"></div>
+          <div id="licenseInfo" style="font-size:0.75rem; color:var(--muted); margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:auto; padding-top:8px; border-top:1px solid var(--border);">
+        <button id="renderCloudBtn" class="primary" disabled>Onayla ve Bulutta MP4 Render Et</button>
+        <button id="downloadMp4Btn" hidden class="primary">MP4 İndir ve Geçici Dosyaları Temizle</button>
+        <button id="deleteJobBtn" hidden class="danger">Geçici Bulut Dosyalarını Sil</button>
+      </div>
+    </section>
+
+    <!-- SAĞ PANEL: OTONOM YAPAY ZEKÂ KURGU AJANI -->
+    <section class="card">
+      <h2>3. Otonom Yapay Zekâ Kurgu Ajanı</h2>
+      <div id="aiLog" class="ai-log">
+        <div class="ai-msg system">Doğal Türkçe komutlar verin: "Bu sahneyi 3 saniye uzat", "İkinci sahneyi başa al", "Müziğin sesini düşür", "Daha sinematik geçiş yap" vb.</div>
+      </div>
+
+      <div id="aiProposalBox" class="proposal-box" hidden>
+        <div id="aiProposalReply" style="font-weight:600; margin-bottom:6px;"></div>
+        <ul id="aiProposalList" style="margin:0 0 8px 18px; padding:0;"></ul>
+        <div class="row">
+          <button id="aiApplyBtn" class="primary">Öneriyi Onayla ve Uygula</button>
+          <button id="aiRejectBtn" class="danger">İptal</button>
+        </div>
+      </div>
+
+      <div>
+        <label for="aiCommand">Kurgu Komutunuz</label>
+        <textarea id="aiCommand" rows="3" placeholder="Örn: Bu cümleye uygun daha etkileyici bir görsel bul..."></textarea>
+      </div>
+      <button id="aiSendBtn" class="primary">Komutu Ajana Gönder</button>
+    </section>
+  </main>
+
+  <script src="/editor-agent.js"></script>
+  <script>
+    (() => {
+      const STORAGE_KEY = "cf_editor_projects_v1";
+      const state = {
+        jobId: "",
+        jobToken: "",
+        status: "idle",
+        scenes: [],
+        activeIndex: 0,
+        audioMix: { voiceVolume: 1.0, musicVolume: 0.35 },
+        pollTimer: null
+      };
+
+      const el = id => document.getElementById(id);
+      const voicePlayer = el("voicePlayer");
+
+      function setStatus(text, kind = "") {
+        const badge = el("jobStatusBadge");
+        badge.textContent = text;
+        badge.className = "badge " + kind;
+      }
+
+      function recomputeTiming() {
+        let cursor = 0;
+        for (const s of state.scenes) {
+          s.start = Math.round(cursor * 100) / 100;
+          cursor += Number(s.duration) || 2.5;
+          s.end = Math.round(cursor * 100) / 100;
+        }
+      }
+
+      function currentImageUrl(scene) {
+        if (!scene) return "";
+        if (scene.externalVisual?.url) return scene.externalVisual.url;
+        if (scene.selectedCandidate && state.jobId && state.jobToken) {
+          return `/api/shorts/jobs/${state.jobId}/candidate-${scene.sourceSceneIndex}-${scene.selectedCandidate}?token=${encodeURIComponent(state.jobToken)}`;
+        }
+        return "";
+      }
+
+      function renderPreview() {
+        const scene = state.scenes[state.activeIndex];
+        const img = el("previewImg");
+        const cap = el("previewCaption");
+        if (!scene) {
+          img.removeAttribute("src");
+          cap.textContent = "Sahne bekleniyor...";
+          return;
+        }
+        const url = currentImageUrl(scene);
+        if (url && img.src !== url) img.src = url;
+        const f = scene.framing || { scale: 1, panX: 0, panY: 0 };
+        img.style.transform = `scale(${f.scale || 1}) translate(${f.panX || 0}%, ${f.panY || 0}%)`;
+        cap.textContent = scene.text || "";
+      }
+
+      function renderTracks() {
+        const vTrack = el("visualTrack");
+        const cTrack = el("captionTrack");
+        vTrack.innerHTML = "";
+        cTrack.innerHTML = "";
+
+        state.scenes.forEach((scene, i) => {
+          const widthPx = Math.max(88, Math.round((Number(scene.duration) || 2.5) * 28));
+          const vClip = document.createElement("div");
+          vClip.className = "clip" + (i === state.activeIndex ? " active" : "");
+          vClip.style.width = widthPx + "px";
+          vClip.innerHTML = `<strong>Sahne ${i + 1}</strong><br><small>${scene.duration}s · ${scene.transition || "cut"}</small>`;
+          vClip.onclick = () => selectScene(i);
+          vTrack.appendChild(vClip);
+
+          const cClip = document.createElement("div");
+          cClip.className = "clip caption-clip" + (i === state.activeIndex ? " active" : "");
+          cClip.style.width = widthPx + "px";
+          cClip.textContent = (scene.text || "").slice(0, 32) || "(altyazı yok)";
+          cClip.onclick = () => selectScene(i);
+          cTrack.appendChild(cClip);
+        });
+
+        el("voiceVol").value = Math.round((state.audioMix.voiceVolume ?? 1) * 100);
+        el("voiceVolVal").textContent = el("voiceVol").value + "%";
+        el("musicVol").value = Math.round((state.audioMix.musicVolume ?? 0.35) * 100);
+        el("musicVolVal").textContent = el("musicVol").value + "%";
+      }
+
+      function renderInspector() {
+        const box = el("sceneInspector");
+        const scene = state.scenes[state.activeIndex];
+        if (!scene) {
+          box.hidden = true;
+          return;
+        }
+        box.hidden = false;
+        el("inspectorTitle").textContent = `Sahne ${state.activeIndex + 1} / ${state.scenes.length}`;
+        el("sceneDuration").value = scene.duration;
+        el("sceneTransition").value = scene.transition || "cut";
+        const f = scene.framing || { scale: 1.0, panX: 0, panY: 0 };
+        el("frameScale").value = f.scale;
+        el("frameScaleVal").textContent = f.scale;
+        el("framePanX").value = f.panX;
+        el("framePanXVal").textContent = f.panX;
+        el("framePanY").value = f.panY;
+        el("framePanYVal").textContent = f.panY;
+        el("sceneCaption").value = scene.text || "";
+
+        const grid = el("optionsGrid");
+        grid.innerHTML = "";
+        (scene.options || []).forEach(opt => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          const isSelected = !scene.externalVisual && String(scene.selectedCandidate) === String(opt.id);
+          btn.className = "opt-card" + (isSelected ? " selected" : "");
+          const src = `/api/shorts/jobs/${state.jobId}/candidate-${scene.sourceSceneIndex}-${opt.id}?token=${encodeURIComponent(state.jobToken)}`;
+          btn.innerHTML = `<img src="${src}" alt="" /><small>${opt.source || "Aday"}</small>`;
+          btn.onclick = () => {
+            scene.selectedCandidate = opt.id;
+            scene.externalVisual = null;
+            renderAll();
+            saveDraft();
+          };
+          grid.appendChild(btn);
+        });
+
+        if (scene.externalVisual) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "opt-card selected";
+          btn.innerHTML = `<img src="${scene.externalVisual.url}" alt="" /><small>${scene.externalVisual.source || "Açık Kaynak"}</small>`;
+          grid.appendChild(btn);
+          el("licenseInfo").textContent = `Kaynak: ${scene.externalVisual.source || "-"} | Lisans: ${scene.externalVisual.license || "Belirtilmedi"}`;
+        } else {
+          const chosen = (scene.options || []).find(o => String(o.id) === String(scene.selectedCandidate));
+          el("licenseInfo").textContent = chosen
+            ? `Kaynak: ${chosen.source || "-"} | Lisans: ${chosen.license || "-"}`
+            : "";
+        }
+      }
+
+      function renderAll() {
+        recomputeTiming();
+        renderPreview();
+        renderTracks();
+        renderInspector();
+        el("renderCloudBtn").disabled = !state.scenes.length || state.status !== "awaiting_approval";
+      }
+
+      function selectScene(index) {
+        state.activeIndex = Math.max(0, Math.min(state.scenes.length - 1, index));
+        renderAll();
+      }
+
+      async function searchVisualForScene(sceneIndex, query, autoSelect = false) {
+        const res = await fetch(`/api/visual-search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        const data = await res.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (!items.length || !state.scenes[sceneIndex]) return [];
+        if (autoSelect) {
+          const pick = items[0];
+          state.scenes[sceneIndex].externalVisual = {
+            url: pick.url,
+            title: pick.title,
+            author: pick.author,
+            license: pick.license,
+            license_url: pick.license_url,
+            page_url: pick.page_url,
+            source: pick.source
+          };
+        }
+        return items;
+      }
+
+      function saveLocalProject() {
+        const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        const entry = {
+          jobId: state.jobId,
+          jobToken: state.jobToken,
+          hook: el("projectHook").value.trim() || "Adsız Proje",
+          scenes: state.scenes,
+          audioMix: state.audioMix,
+          updatedAt: new Date().toISOString()
+        };
+        const idx = list.findIndex(x => x.jobId && x.jobId === state.jobId);
+        if (idx >= 0) list[idx] = entry;
+        else list.unshift(entry);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, 15)));
+        refreshSavedProjects();
+      }
+
+      function refreshSavedProjects() {
+        const sel = el("savedProjects");
+        const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        sel.innerHTML = list.length ? "" : '<option value="">Kayıtlı proje yok</option>';
+        list.forEach((p, idx) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = `${p.hook} (${new Date(p.updatedAt).toLocaleString("tr-TR")})`;
+          sel.appendChild(opt);
+        });
+      }
+
+      async function saveDraft() {
+        saveLocalProject();
+        if (!state.jobId || !state.jobToken) return;
+        try {
+          await fetch(`/api/shorts/jobs/${state.jobId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Job-Token": state.jobToken
+            },
+            body: JSON.stringify({
+              timeline: state.scenes,
+              audioMix: state.audioMix
+            })
+          });
+        } catch {}
+      }
+
+      async function pollJob() {
+        if (!state.jobId || !state.jobToken) return;
+        try {
+          const res = await fetch(`/api/shorts/jobs/${state.jobId}`, {
+            headers: { "X-Job-Token": state.jobToken },
+            cache: "no-store"
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setStatus(data.error || "İş bulunamadı", "err");
+            return;
+          }
+
+          state.status = data.status;
+          setStatus(`${data.status} (${data.progress || 0}%) · ${data.message || ""}`, data.status === "failed" ? "err" : "ok");
+
+          if (data.status === "awaiting_approval" && data.review?.scenes) {
+            clearInterval(state.pollTimer);
+            state.pollTimer = null;
+            if (Array.isArray(data.draft?.timeline) && data.draft.timeline.length) {
+              state.scenes = data.draft.timeline;
+              state.audioMix = data.draft.audioMix || state.audioMix;
+            } else {
+              state.scenes = data.review.scenes.map(s => ({
+                sourceSceneIndex: s.index,
+                text: s.text,
+                duration: Math.max(0.5, Math.round(((Number(s.end) || 0) - (Number(s.start) || 0)) * 10) / 10) || 2.5,
+                transition: "cut",
+                framing: { scale: 1.0, panX: 0, panY: 0 },
+                selectedCandidate: s.options?.[0]?.id || 1,
+                externalVisual: null,
+                options: s.options || []
+              }));
+            }
+            renderAll();
+          } else if (data.status === "completed") {
+            clearInterval(state.pollTimer);
+            state.pollTimer = null;
+            el("downloadMp4Btn").hidden = false;
+            el("deleteJobBtn").hidden = false;
+          } else if (data.status === "failed") {
+            clearInterval(state.pollTimer);
+            state.pollTimer = null;
+            el("deleteJobBtn").hidden = false;
+          }
+        } catch (err) {
+          setStatus("Durum sorgulanamadı: " + (err?.message || err), "warn");
+        }
+      }
+
+      el("startJobBtn").onclick = async () => {
+        const hook = el("projectHook").value.trim();
+        const file = el("audioFile").files?.[0];
+        if (!hook || !file) {
+          alert("Lütfen video başlığı ve ses dosyası seçin.");
+          return;
+        }
+        voicePlayer.src = URL.createObjectURL(file);
+        const fd = new FormData();
+        fd.append("hook", hook);
+        fd.append("title", hook);
+        fd.append("audio", file);
+
+        setStatus("Buluta yükleniyor...", "warn");
+        const res = await fetch("/api/shorts/jobs", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus(data.error || "İş başlatılamadı", "err");
+          return;
+        }
+        state.jobId = data.job_id;
+        state.jobToken = data.job_token;
+        state.status = data.status;
+        saveLocalProject();
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        state.pollTimer = setInterval(pollJob, 4000);
+        pollJob();
+      };
+
+      el("renderCloudBtn").onclick = async () => {
+        if (!state.jobId || !state.jobToken || !state.scenes.length) return;
+        const timeline = state.scenes.map(s => ({
+          sourceSceneIndex: s.sourceSceneIndex,
+          candidate: s.selectedCandidate,
+          externalUrl: s.externalVisual?.url || "",
+          metadata: s.externalVisual || null,
+          duration: s.duration,
+          text: s.text,
+          transition: s.transition || "cut",
+          framing: s.framing || { scale: 1.0, panX: 0, panY: 0 }
+        }));
+
+        const res = await fetch(`/api/shorts/jobs/${state.jobId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Job-Token": state.jobToken
+          },
+          body: JSON.stringify({ timeline, audioMix: state.audioMix })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus(data.error || "Render başlatılamadı", "err");
+          return;
+        }
+        state.status = "queued";
+        el("renderCloudBtn").disabled = true;
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        state.pollTimer = setInterval(pollJob, 4000);
+        pollJob();
+      };
+
+      el("downloadMp4Btn").onclick = async () => {
+        if (!state.jobId || !state.jobToken) return;
+        setStatus("MP4 indiriliyor...", "warn");
+        const res = await fetch(`/api/shorts/jobs/${state.jobId}/video?token=${encodeURIComponent(state.jobToken)}`);
+        if (!res.ok) {
+          setStatus("MP4 indirilemedi.", "err");
+          return;
+        }
+        const blob = await res.blob();
+        if (!blob.size) {
+          setStatus("İndirilen MP4 boş.", "err");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "content-factory-shorts.mp4";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        // Verified download completed -> auto-clean temporary cloud files
+        const del = await fetch(`/api/shorts/jobs/${state.jobId}`, {
+          method: "DELETE",
+          headers: { "X-Job-Token": state.jobToken }
+        });
+        if (del.ok) {
+          setStatus("MP4 indirildi ve geçici bulut dosyaları silindi.", "ok");
+          el("downloadMp4Btn").hidden = true;
+          el("deleteJobBtn").hidden = true;
+        }
+      };
+
+      el("deleteJobBtn").onclick = async () => {
+        if (!state.jobId || !state.jobToken) return;
+        await fetch(`/api/shorts/jobs/${state.jobId}`, {
+          method: "DELETE",
+          headers: { "X-Job-Token": state.jobToken }
+        });
+        setStatus("Geçici bulut dosyaları temizlendi.", "ok");
+      };
+
+      // Timeline & Inspector bindings
+      el("playSyncBtn").onclick = () => {
+        if (voicePlayer.paused) voicePlayer.play();
+        else voicePlayer.pause();
+      };
+      voicePlayer.addEventListener("timeupdate", () => {
+        const t = voicePlayer.currentTime || 0;
+        const total = state.scenes.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
+        el("timeReadout").textContent = `${t.toFixed(1)}s / ${total.toFixed(1)}s`;
+        const hit = state.scenes.findIndex(s => t >= s.start && t < s.end);
+        if (hit >= 0 && hit !== state.activeIndex) {
+          state.activeIndex = hit;
+          renderPreview();
+          renderTracks();
+        }
+      });
+
+      el("sceneDuration").onchange = e => {
+        const s = state.scenes[state.activeIndex];
+        if (!s) return;
+        s.duration = Math.max(0.4, Math.min(180, Number(e.target.value) || 2.5));
+        renderAll();
+        saveDraft();
+      };
+      el("sceneTransition").onchange = e => {
+        const s = state.scenes[state.activeIndex];
+        if (!s) return;
+        s.transition = e.target.value;
+        renderAll();
+        saveDraft();
+      };
+      el("sceneCaption").onchange = e => {
+        const s = state.scenes[state.activeIndex];
+        if (!s) return;
+        s.text = e.target.value;
+        renderAll();
+        saveDraft();
+      };
+      ["frameScale", "framePanX", "framePanY"].forEach(id => {
+        el(id).oninput = () => {
+          const s = state.scenes[state.activeIndex];
+          if (!s) return;
+          s.framing = {
+            scale: Number(el("frameScale").value),
+            panX: Number(el("framePanX").value),
+            panY: Number(el("framePanY").value)
+          };
+          renderPreview();
+          el("frameScaleVal").textContent = s.framing.scale;
+          el("framePanXVal").textContent = s.framing.panX;
+          el("framePanYVal").textContent = s.framing.panY;
+        };
+        el(id).onchange = () => saveDraft();
+      });
+
+      el("voiceVol").oninput = () => {
+        state.audioMix.voiceVolume = Number(el("voiceVol").value) / 100;
+        el("voiceVolVal").textContent = el("voiceVol").value + "%";
+        voicePlayer.volume = Math.min(1, state.audioMix.voiceVolume);
+      };
+      el("voiceVol").onchange = () => saveDraft();
+      el("musicVol").oninput = () => {
+        state.audioMix.musicVolume = Number(el("musicVol").value) / 100;
+        el("musicVolVal").textContent = el("musicVol").value + "%";
+      };
+      el("musicVol").onchange = () => saveDraft();
+
+      el("moveLeftBtn").onclick = () => {
+        if (state.activeIndex <= 0) return;
+        const [m] = state.scenes.splice(state.activeIndex, 1);
+        state.scenes.splice(state.activeIndex - 1, 0, m);
+        selectScene(state.activeIndex - 1);
+        saveDraft();
+      };
+      el("moveRightBtn").onclick = () => {
+        if (state.activeIndex >= state.scenes.length - 1) return;
+        const [m] = state.scenes.splice(state.activeIndex, 1);
+        state.scenes.splice(state.activeIndex + 1, 0, m);
+        selectScene(state.activeIndex + 1);
+        saveDraft();
+      };
+      el("moveStartBtn").onclick = () => {
+        if (state.activeIndex <= 0) return;
+        const [m] = state.scenes.splice(state.activeIndex, 1);
+        state.scenes.unshift(m);
+        selectScene(0);
+        saveDraft();
+      };
+
+      el("visualSearchBtn").onclick = async () => {
+        const q = el("visualQuery").value.trim();
+        if (q.length < 2) return;
+        await searchVisualForScene(state.activeIndex, q, true);
+        renderAll();
+        saveDraft();
+      };
+
+      el("saveProjectBtn").onclick = () => saveDraft();
+      el("loadProjectBtn").onclick = () => {
+        const list = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        const picked = list[Number(el("savedProjects").value)];
+        if (!picked) return;
+        state.jobId = picked.jobId || "";
+        state.jobToken = picked.jobToken || "";
+        state.scenes = picked.scenes || [];
+        state.audioMix = picked.audioMix || { voiceVolume: 1.0, musicVolume: 0.35 };
+        el("projectHook").value = picked.hook || "";
+        renderAll();
+        if (state.jobId && state.jobToken) pollJob();
+      };
+
+      refreshSavedProjects();
+      if (window.initEditorAgent) {
+        window.initEditorAgent({ state, selectScene, recomputeTiming, renderAll, saveDraft, searchVisualForScene });
+      }
+    })();
+  </script>
+</body>
+</html>
