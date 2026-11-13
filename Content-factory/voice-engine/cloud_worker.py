@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT))
 import gateway
 from timeline_renderer import render_timeline_mp4
+from animated_scene_renderer import render_animated_video, infer_kind
 from urllib.parse import urlparse
 import ipaddress,socket
 CHUNK=16*1024*1024
@@ -297,6 +298,109 @@ def render_approved_timeline(job_id,meta,work,source,selections):
   "edit_strategy":str(edit_plan.get("strategy","unknown"))
 }
 
+def make_animated_text_groups(text):
+ normalized=re.sub(r"\s+"," ",str(text or "")).strip()
+ if not normalized:return []
+ clauses=[x.strip() for x in re.split(r"(?<=[.!?…])\s+|(?<=[,;:])\s+",normalized) if x.strip()]
+ if not clauses:clauses=[normalized]
+ groups=[];cursor=0.0
+ for clause in clauses:
+  words=clause.split()
+  chunks=[]
+  while len(words)>10:
+   chunks.append(" ".join(words[:10]));words=words[10:]
+  if words:chunks.append(" ".join(words))
+  for chunk in chunks:
+   count=max(1,len(chunk.split()))
+   punctuation_bonus=0.18 if chunk.rstrip().endswith((".", "!", "?", "…")) else 0.05
+   span=max(1.65,min(4.8,count*0.36+punctuation_bonus))
+   groups.append({"index":len(groups)+1,"start":round(cursor,3),"end":round(cursor+span,3),"duration":round(span,3),"text":chunk})
+   cursor+=span
+ return groups
+
+
+def render_animated_timeline(meta,work,source):
+ if meta.get("input_mode")=="text":
+  groups=make_animated_text_groups(meta.get("text",""))
+  if not groups:raise RuntimeError("Animasyon için metin sahnesi oluşturulamadı.")
+  duration=float(groups[-1]["end"])
+  cleaned=work/"cleaned.wav";create_silence(cleaned,duration)
+  edit_plan={"strategy":"animated_text_only","cuts":[],"removed_seconds":0.0}
+  transcript=str(meta.get("text",""))
+ else:
+  source_duration=gateway.probe_duration(source)
+  rows=gateway.transcribe_audio(source)
+  if not rows:raise RuntimeError("Animasyon için seslendirme metni çözümlenemedi.")
+  edit_plan=gateway.build_edit_plan(rows,source_duration)
+  cleaned=work/"cleaned.wav"
+  gateway.render_edited_audio(source,cleaned,edit_plan)
+  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
+  duration=gateway.probe_duration(cleaned)
+  groups=make_sentence_groups(rows,duration)
+  if not groups:groups=build_audio_scene_groups(rows,duration)
+  transcript=" ".join(str(row.get("text","")) for row in rows)
+ if not groups:raise RuntimeError("Animasyon sahne zaman çizelgesi boş.")
+ project_context=" ".join([str(meta.get("title","")),str(meta.get("hook","")),transcript[:2400]])
+ render_scenes=[]
+ for index,group in enumerate(groups,1):
+  scene_text=re.sub(r"\s+"," ",str(group.get("text","")).strip())
+  if not scene_text:continue
+  start=max(0.0,float(group.get("start",0.0)))
+  end=max(start+0.08,min(duration,float(group.get("end",start+0.5))))
+  span=max(0.08,end-start)
+  render_scenes.append({
+   "index":index,
+   "start":round(start,3),
+   "end":round(end,3),
+   "duration":round(span,3),
+   "text":scene_text[:220],
+   "visual_kind":infer_kind(scene_text,str(meta.get("title",""))+" "+str(meta.get("hook","")))
+  })
+ if not render_scenes:raise RuntimeError("Animasyon için kullanılabilir sahne metni yok.")
+ # Preserve the complete narration timeline exactly; any tiny grouping gaps are filled
+ # proportionally by the animation renderer, never by stretching or truncating audio.
+ output=work/"shorts.mp4"
+ update_status(meta["job_id"],status="processing",progress=72,message="Konuya özel piksel animasyonları ve metin pencereleri hazırlanıyor.")
+ render_animated_video(
+  scenes=render_scenes,
+  voice_audio_path=str(cleaned),
+  output_mp4_path=str(output),
+  duration=duration,
+  context=project_context,
+  width=1080,height=1920,fps=15
+ )
+ rendered_duration=gateway.probe_duration(output)
+ out_width,out_height=gateway.probe_video_dimensions(output)
+ if (out_width,out_height)!=(1080,1920):
+  raise RuntimeError("Animasyon çözünürlük kontrolü başarısız: "+str(out_width)+"x"+str(out_height))
+ delta=abs(rendered_duration-duration)
+ if delta>0.60:
+  raise RuntimeError("Animasyon ve ses süreleri uyuşmuyor: "+str(round(rendered_duration,2))+"s / "+str(round(duration,2))+"s.")
+ credits=[
+  "CONTENT FACTORY — ANİMASYON ÜRETİM RAPORU",
+  "Video başlığı: "+str(meta.get("title","Animasyonlu Shorts")),
+  "Süre: "+str(round(rendered_duration,2))+" saniye",
+  "Kurgu stratejisi: "+str(edit_plan.get("strategy","animated")),
+  "Sahne sayısı: "+str(len(render_scenes)),
+  "Stok fotoğraf: Kullanılmadı",
+  "Görsel üretim: Özgün, kodla çizilmiş piksel-art animasyonları",
+  "Yerleşim: Dikey 9:16 · 1080×1920 · 30 FPS",
+  "Metinler: Kullanıcının sesinden çözümlenen veya girdiği metinden alınan sahne cümleleri",
+ ]
+ (work/"sources-and-licenses.txt").write_text("\n".join(credits),encoding="utf-8")
+ return {
+  "status":"completed",
+  "duration":round(rendered_duration,2),
+  "removed_silence":round(float(edit_plan.get("removed_seconds",0.0)),2),
+  "edit_cut_count":len(edit_plan.get("cuts",[])),
+  "scene_count":len(render_scenes),
+  "source_count":0,
+  "caption_count":len(render_scenes),
+  "qc_duration_delta":round(delta,3),
+  "edit_strategy":str(edit_plan.get("strategy","animated"))
+}
+
+
 def prepare_review(job_id,meta,work,source=None):
  rows=[]
  if meta.get("input_mode")=="text":
@@ -405,16 +509,20 @@ def render(job_id,phase='research'):
   job={"job_id":job_id,"status":"queued","progress":4,"message":"Dosyalar alındı; ses ve sahneler analiz ediliyor.","created_at":meta["created_at"],"updated_at":time.time(),"expires_at":meta["expires_at"],"directory":str(work),"source_audio":source.name if source else None,"title":meta["title"],"hook":meta.get("hook",""),"text":meta["text"],"user_images":user_images,"error":None}
   with gateway.JOBS_LOCK:gateway.JOBS[job_id]=job
   if phase=="research":
+   if meta.get("visual_mode")=="animated":
+    raise ValueError("Animasyon modu research aşamasına gönderilmemeli; render aşaması kullanılmalı.")
    prepare_review(job_id,meta,work,source)
    return
   if phase!="render":raise ValueError("Invalid worker phase")
-  selections=request_json("GET",f"{api_base()}/{job_id}/selection")
-  approved=[]
-  for scene in selections.get("scenes",[]):
-   scene_no=int(scene["scene"]);candidate=str(scene["candidate"]);asset=work/(f"approved-{scene_no}-{candidate}.jpg")
-   get_input(job_id,f"candidate-{scene_no}-{candidate}",asset)
-   info=scene.get("metadata",{});info["visual_match_verified"]="true";approved.append((asset,info))
-  result=render_approved_timeline(job_id,meta,work,source,selections)
+  if meta.get("visual_mode")=="animated":
+   result=render_animated_timeline({**meta,"job_id":job_id},work,source)
+  else:
+   selections=request_json("GET",f"{api_base()}/{job_id}/selection")
+   for scene in selections.get("scenes",[]):
+    scene_no=int(scene["scene"]);candidate=str(scene["candidate"]);asset=work/(f"approved-{scene_no}-{candidate}.jpg")
+    get_input(job_id,f"candidate-{scene_no}-{candidate}",asset)
+    info=scene.get("metadata",{});info["visual_match_verified"]="true"
+   result=render_approved_timeline(job_id,meta,work,source,selections)
   update_status(job_id,status="uploading",progress=96,message="MP4 ve kaynak dosyaları geçici depolamaya aktarılıyor.")
   manifest={}
   for local,name in [("shorts.mp4","video"),("cleaned.wav","audio"),("sources-and-licenses.txt","credits")]:
