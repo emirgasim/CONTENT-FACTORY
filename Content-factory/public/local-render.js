@@ -361,14 +361,6 @@ function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook,motio
  const shade=ctx.createLinearGradient(0,y,0,y+frameH);shade.addColorStop(0,"rgba(0,0,0,.02)");shade.addColorStop(.72,"rgba(0,0,0,0)");shade.addColorStop(1,"rgba(0,0,0,.18)");
  ctx.fillStyle=shade;ctx.fillRect(x,y,frameW,frameH);ctx.restore();
  ctx.save();ctx.strokeStyle=style.hookPlate;ctx.lineWidth=Math.max(4,w*.006);ctx.globalAlpha=.9;ctx.beginPath();ctx.roundRect(x,y,frameW,frameH,w*.022);ctx.stroke();ctx.restore();
- if(hook){
-  const hookFont=Math.round(w*.041);ctx.font="900 "+hookFont+"px system-ui, -apple-system, sans-serif";
-  const hookLines=wrapLines(ctx,hook,w*.82,2),hookHeight=hookLines.length*hookFont*1.12+hookFont*.56;
-  const hookWidth=w*.9,hookX=(w-hookWidth)/2,hookY=h*.075;
-  rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.022,"#FFFFFF");
-  ctx.fillStyle="#101018";ctx.textAlign="center";ctx.textBaseline="middle";
-  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+hookFont*.28+hookFont*1.12*(i+.5)));
- }
  const caption=scene.caption.trim();
  let font=Math.round(w*(caption.split(/\s+/).length<5?.078:caption.split(/\s+/).length<9?.069:.061)),lines=[];
  ctx.textAlign="center";ctx.textBaseline="middle";
@@ -376,6 +368,19 @@ function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook,motio
  const lineHeight=font*1.14,plaqueHeight=lines.length*lineHeight+font*.62,plaqueWidth=w*.91;
  const plaqueX=(w-plaqueWidth)/2,plaqueY=h*.735-plaqueHeight/2;
  rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,w*.012,style.captionPlate);
+ if(hook){
+  // Match the lower caption's bold face and calculated font size; the white pill hugs the text.
+  ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";
+  const hookLines=wrapLines(ctx,hook,w*.84,2);
+  const hookLineHeight=font*1.14;
+  const hookTextWidth=Math.max(0,...hookLines.map(line=>ctx.measureText(line).width));
+  const hookWidth=Math.min(w*.9,Math.max(w*.22,hookTextWidth+w*.06));
+  const hookHeight=hookLines.length*hookLineHeight+font*.62;
+  const hookX=(w-hookWidth)/2,hookY=h*.075;
+  rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.018,"#FFFFFF");
+  ctx.fillStyle="#101018";ctx.textAlign="center";ctx.textBaseline="middle";
+  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+font*.31+hookLineHeight*(i+.5)));
+ }
  ctx.fillStyle=style.captionText;lines.forEach((line,i)=>ctx.fillText(line,w/2,plaqueY+font*.31+lineHeight*(i+.5)));
  const barH=Math.max(8,h*.009),barY=h*.982;ctx.fillStyle=style.progressTrack;ctx.fillRect(0,barY,w,barH);ctx.fillStyle=style.progressFill;ctx.fillRect(0,barY,w*progress,barH);
 }
