@@ -1317,7 +1317,12 @@ def render_short_job(job_id: str) -> None:
             # Rank only images discovered for this beat. Do not pull a random
             # image from the video-wide reserve when scene relevance is weak.
             selected: tuple[Path, dict[str, str]] | None = None
-            ranked_scene = rank_scene_images(scene_text, scene_pairs)
+            ranked_scene = rank_scene_images(translate_visual_query(scene_text), scene_pairs)
+            if not ranked_scene:
+                # A broader topic result may be used only if the local vision
+                # model confirms it depicts this exact beat; never random-pick.
+                reserve_candidates = [pair for pair in downloaded_assets if pair not in scene_pairs]
+                ranked_scene = rank_scene_images(translate_visual_query(scene_text), reserve_candidates)
             if ranked_scene:
                 best_score, best_pair = ranked_scene[0]
                 # CLIP cosine similarity is normally in this range; lexical
