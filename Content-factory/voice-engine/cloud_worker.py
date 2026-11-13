@@ -57,7 +57,7 @@ def make_sentence_groups(rows,duration):
  for index,beat in enumerate(beats,1):
   start=max(0.0,float(beat.get("start",0.0)))
   end=max(start+0.08,min(float(duration),float(beat.get("end",start+0.5))))
-  text=re.sub(r"\\s+"," ",str(beat.get("text","")).strip())
+  text=re.sub(r"\s+"," ",str(beat.get("text","")).strip())
   if text:scenes.append({"index":index,"start":round(start,3),"end":round(end,3),"duration":round(end-start,3),"text":text})
  return scenes
 
