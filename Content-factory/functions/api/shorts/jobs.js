@@ -10,8 +10,9 @@ export async function onRequestPost({request,env}){
  if(!kv)return json({error:"Ücretsiz geçici depolama bağlantısı eksik. Cloudflare Pages ayarlarında SHORTS_TEMP KV binding oluşturulmalı."},503);
  if(!env.GITHUB_ACTIONS_TOKEN)return json({error:"GitHub bulut işçisi henüz etkinleştirilmedi. Pages secret GITHUB_ACTIONS_TOKEN gerekli."},503);
  let form;try{form=await request.formData();}catch{return json({error:"Gönderilen proje formu okunamadı."},400);}
- const title=String(form.get("title")||form.get("hook")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio"),inputMode=String(form.get("input_mode")||"audio"),script=String(form.get("text")||"").trim();
- if(!hook)return json({error:"Video kanca başlığı gerekli."},400);
+ const visualMode=String(form.get("visual_mode")||"stock"),title=String(form.get("title")||form.get("hook")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio"),inputMode=String(form.get("input_mode")||"audio"),script=String(form.get("text")||"").trim();
+ if(!["stock","animated"].includes(visualMode))return json({error:"Geçersiz görsel üretim modu."},400);
+ if(visualMode==="stock"&&!hook)return json({error:"Stok görsel modunda video kanca başlığı gerekli."},400);
  if(!["audio","text"].includes(inputMode))return json({error:"Geçersiz giriş türü."},400);
  if(inputMode==="text"){if(!script||script.length>MAX_TEXT)return json({error:"Metin boş veya 30.000 karakter sınırını aşıyor."},413);}
  else if(!audio||typeof audio.arrayBuffer!=="function"||audio.size<1||audio.size>MAX_AUDIO)return json({error:"Ses dosyası boş veya 30 MB sınırını aşıyor."},413);
@@ -25,11 +26,11 @@ export async function onRequestPost({request,env}){
   const imageFiles=[];
   for(let i=0;i<images.length;i++){const name=safeName(images[i].name,"reference-"+i+".jpg"),stored=await putFile(kv,prefix+"input/image-"+String(i+1).padStart(2,"0"),images[i]);imageFiles.push({...stored,name,type:images[i].type||"image/jpeg"});}
   const createdAt=new Date(now).toISOString(),expiresAt=new Date(now+TTL_SECONDS*1000).toISOString();
-  const meta={job_id:id,title,hook,text:script,input_mode:inputMode,audio:audioFile?{...audioFile,name:audioName,type:audio.type||"application/octet-stream"}:null,images:imageFiles,created_at:createdAt,expires_at:expiresAt};
+  const meta={job_id:id,title:title||(visualMode==="animated"?"Animasyonlu Shorts":"Shorts"),hook,text:script,input_mode:inputMode,visual_mode:visualMode,audio:audioFile?{...audioFile,name:audioName,type:audio.type||"application/octet-stream"}:null,images:imageFiles,created_at:createdAt,expires_at:expiresAt};
   await kv.put(prefix+"input.json",JSON.stringify(meta),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"owner.json",JSON.stringify({token_hash:await digest(ownerToken)}),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"status.json",JSON.stringify({job_id:id,status:"queued",progress:1,message:"Bulut render kuyruğuna alındı.",created_at:createdAt,updated_at:createdAt,expires_at:expiresAt}),{expirationTtl:TTL_SECONDS});
-  const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id,phase:"research"}})});
+  const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id,phase:visualMode==="animated"?"render":"research"}})});
   if(gh.status!==204){
    let details="";
    try{const body=await gh.json();details=String(body.message||"")+(body.errors?.length?" · "+body.errors.map(x=>typeof x==="string"?x:(x.message||JSON.stringify(x))).join("; "):"");}
