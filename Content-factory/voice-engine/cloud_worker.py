@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse,json,os,shutil,sys,tempfile,time
+import argparse,json,os,re,shutil,sys,tempfile,time
 from pathlib import Path
 import requests
 from requests.exceptions import RequestException
