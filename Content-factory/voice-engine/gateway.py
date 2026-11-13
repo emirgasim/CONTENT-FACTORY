@@ -572,6 +572,42 @@ def search_europeana(query: str, limit: int = 20) -> list[dict[str, str]]:
     return [{"title": plain_text(x.get("title", [query])[0] if isinstance(x.get("title"), list) else x.get("title") or query), "url": x.get(" edmPreview") or x.get("edmPreview", ""), "page_url": x.get("guid", ""), "author": plain_text((x.get("dcCreator") or ["Unknown"])[0]), "license": str(x.get("rights", ["Unknown"])[0]), "license_url": str(x.get("rights", [""])[0]), "credit": plain_text((x.get("dataProvider") or [""])[0]), "mime": "image/unknown", "source": "Europeana"} for x in rows if x.get("edmPreview")]
 
 
+def search_duckduckgo_images(query: str, limit: int = 20) -> list[dict[str, str]]:
+    """Best-effort keyless DuckDuckGo image search; may be throttled or changed upstream."""
+    try:
+        headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+        landing = requests.get("https://duckduckgo.com/", params={"q": query, "iax": "images", "ia": "images"}, headers=headers, timeout=15)
+        landing.raise_for_status()
+        match = re.search(r'vqd=([\'"])(.*?)\1', landing.text) or re.search(r"vqd=([^&\"']+)", landing.text)
+        if not match:
+            return []
+        vqd = match.group(2) if match.lastindex and match.lastindex >= 2 else match.group(1)
+        response = requests.get("https://duckduckgo.com/i.js", params={"l": "us-en", "o": "json", "q": query, "vqd": vqd, "f": ",,,", "p": "1"}, headers={**headers, "Referer": landing.url}, timeout=15)
+        response.raise_for_status()
+        rows = response.json().get("results", [])
+    except Exception:
+        return []
+    items = []
+    for row in rows:
+        image_url = row.get("image") or row.get("thumbnail")
+        if not image_url:
+            continue
+        items.append({
+            "title": plain_text(row.get("title") or query),
+            "url": image_url,
+            "page_url": row.get("url") or "",
+            "author": plain_text(row.get("source") or "Unknown"),
+            "license": "Unknown – verify usage rights before publication",
+            "license_url": "",
+            "credit": plain_text(row.get("source") or ""),
+            "mime": "image/unknown",
+            "source": "DuckDuckGo Images",
+        })
+        if len(items) >= limit:
+            break
+    return items
+
+
 def search_web_image_engine(engine: str, query: str, limit: int = 20) -> list[dict[str, str]]:
     """Fetch publicly accessible image results from mainstream image search pages.
     Search engines may throttle automated requests; failures are isolated per provider.
@@ -637,7 +673,7 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
     providers = [
         search_pexels, search_pixabay, search_unsplash, search_flickr,
         search_openverse, search_commons, search_library_of_congress,
-        search_nasa, search_europeana,
+        search_nasa, search_europeana, search_duckduckgo_images,
         lambda q, limit: search_web_image_engine("Google Images", q, limit),
         lambda q, limit: search_web_image_engine("Bing Images", q, limit),
         lambda q, limit: search_web_image_engine("Yandex Images", q, limit),
