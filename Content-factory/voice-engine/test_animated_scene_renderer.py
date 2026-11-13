@@ -7,7 +7,7 @@ import unittest
 import wave
 from pathlib import Path
 
-from animated_scene_renderer import caption_lines, infer_kind, render_animated_video
+from animated_scene_renderer import (caption_lines, infer_kind, render_animated_video, normalize_turkish_caption, scene_concept)
 
 
 class AnimatedSceneRendererTests(unittest.TestCase):
@@ -26,6 +26,23 @@ class AnimatedSceneRendererTests(unittest.TestCase):
         self.assertGreaterEqual(len(lines), 1)
         self.assertLessEqual(len(lines), 3)
         self.assertTrue(lines[-1])
+
+
+    def test_turkish_caption_normalizes_punctuation_and_sentence_starts(self) -> None:
+        self.assertEqual(
+            normalize_turkish_caption("  bugün  yeni   bir şey oldu .sonra   herkes şaşırdı  ! "),
+            "Bugün yeni bir şey oldu. Sonra herkes şaşırdı!"
+        )
+        self.assertEqual(normalize_turkish_caption("istanbul'da gizli bir yer"), "İstanbul'da gizli bir yer")
+
+    def test_each_sentence_gets_a_semantic_visual_action(self) -> None:
+        self.assertEqual(scene_concept("Sonunda gizli gerçek ortaya çıktı."), "reveal")
+        self.assertEqual(scene_concept("Ama büyük bir tehlike yaklaşıyordu!"), "warning")
+        self.assertEqual(scene_concept("Bir anda devasa bir patlama yaşandı."), "explosion")
+        self.assertNotEqual(
+            scene_concept("Gizli gerçek ortaya çıktı."),
+            scene_concept("Bir anda devasa bir patlama yaşandı.")
+        )
 
     def test_renderer_creates_vertical_mp4_without_any_stock_assets(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cf-animation-test-") as folder:
@@ -46,6 +63,7 @@ class AnimatedSceneRendererTests(unittest.TestCase):
                 output_mp4_path=str(output),
                 duration=2.0,
                 context="retro oyunlar",
+                hook="Bu oyunun bilinmeyen sırrı!",
             )
             self.assertGreater(output.stat().st_size, 2048)
             probe = subprocess.run(
