@@ -50,6 +50,9 @@ def render(job_id):
    if snapshot:
     allowed=("status","progress","message","error","duration","removed_silence","scene_count","source_count")
     cloud_state={k:snapshot[k] for k in allowed if k in snapshot}
+    # The local renderer uses "running"; the cloud job API uses "processing".
+    if cloud_state.get("status")=="running":
+     cloud_state["status"]="processing"
     # Keep API status vocabulary aligned with the local renderer.
     if cloud_state.get("status")=="running":
      cloud_state["status"]="processing"
