@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -852,47 +853,70 @@ def render_short_job(job_id: str) -> None:
                 except Exception:
                     pass
 
-        # Search with the topic/hook as well as the narration; Turkish words receive
-        # a lightweight English visual-query variant for the stock-image catalogues.
+        # Search separately for each narration beat. A topic-only pool caused the
+        # same few photos to repeat across scenes and across different renders.
         stock_pool: list[tuple[Path, dict[str, str]]] = []
-        target_pool_size = min(10, max(4, len(groups)))
-        for query in visual_search_queries(title, hook, script):
-            candidates = search_public_assets(query, limit=45)
-            for candidate in candidates:
+        seen_asset_urls: set[str] = set()
+        scene_asset_map: list[tuple[Path, dict[str, str]] | None] = []
+        scene_queries = []
+        for group in groups:
+            query = english_visual_query(title + " " + group["text"]) or extract_keywords(group["text"])
+            if query:
+                scene_queries.append(query)
+        # Search the actual scene phrase first, then broaden with topic context.
+        for idx, group in enumerate(groups):
+            query = english_visual_query(group["text"]) or extract_keywords(group["text"])
+            if title:
+                query = (query + " " + english_visual_query(title))[:180].strip()
+            selected = None
+            for candidate in search_public_assets(query, limit=30):
+                url = candidate.get("url", "")
+                if not url or url in seen_asset_urls:
+                    continue
                 asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
                 if not asset_path:
                     continue
-                stock_pool.append((asset_path, candidate))
+                selected = (asset_path, candidate)
+                seen_asset_urls.add(url)
+                stock_pool.append(selected)
                 source_records.append(candidate)
-                if len(stock_pool) >= target_pool_size:
-                    break
-            if len(stock_pool) >= min(4, target_pool_size):
                 break
+            scene_asset_map.append(selected)
 
-        # If the topic query returned too few images, search scene phrases to fill
-        # the visual pool. Reuse only as a last resort; adjacent scenes get different images.
-        if len(stock_pool) < min(3, len(groups)):
-            for group in groups:
-                query = english_visual_query(title + " " + group["text"]) or extract_keywords(group["text"])
-                if not query:
-                    continue
-                for candidate in search_public_assets(query, limit=18):
+        # If a scene-specific search fails, broaden to the hook/topic but keep all
+        # results unique. Randomize the fallback pool per job to avoid a fixed sequence.
+        if len(stock_pool) < len(groups):
+            broad_queries = visual_search_queries(title, hook, script)
+            random.Random(job_id).shuffle(broad_queries)
+            for query in broad_queries:
+                for candidate in search_public_assets(query, limit=30):
+                    url = candidate.get("url", "")
+                    if not url or url in seen_asset_urls:
+                        continue
                     asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
                     if not asset_path:
                         continue
-                    if any(existing[1].get("url") == candidate.get("url") for existing in stock_pool):
-                        continue
+                    seen_asset_urls.add(url)
                     stock_pool.append((asset_path, candidate))
                     source_records.append(candidate)
-                    break
-                if len(stock_pool) >= target_pool_size:
+                    if len(stock_pool) >= len(groups):
+                        break
+                if len(stock_pool) >= len(groups):
                     break
 
-        # Every scene receives a visible stock image when at least one licensed result
-        # is available. Uploaded reference images are kept as optional secondary frames.
+        # Assign each scene a different photo whenever the catalog provides one.
+        unused = list(stock_pool)
+        random.Random(job_id).shuffle(unused)
         for idx, group in enumerate(groups):
             chosen: list[tuple[Path, dict[str, str]]] = []
-            if stock_pool:
+            preferred = scene_asset_map[idx] if idx < len(scene_asset_map) else None
+            if preferred:
+                chosen.append(preferred)
+                unused = [item for item in unused if item[1].get("url") != preferred[1].get("url")]
+            elif unused:
+                chosen.append(unused.pop())
+            elif stock_pool:
+                # Only repeat after every unique available asset has been used.
                 chosen.append(stock_pool[idx % len(stock_pool)])
             if user_images:
                 own_path = user_images[idx % len(user_images)]
@@ -903,7 +927,7 @@ def render_short_job(job_id: str) -> None:
                 }))
             scene_assets.append(chosen)
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
-            update_job(job_id, progress=progress, message="Lisanslı stok görseller eşleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
+            update_job(job_id, progress=progress, message="Her sahneye farklı görsel aranıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
         if not stock_pool:
             raise RuntimeError("Konuya uygun lisanslı gerçek stok fotoğrafı bulunamadı. Geometrik/piksel çizim yerine render durduruldu.")
 
