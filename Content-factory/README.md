@@ -4,9 +4,9 @@ Shorts rendering runs on a temporary GitHub-hosted Linux runner, not in iPhone S
 
 ## Background workflow
 
-1. From iPhone Safari, submit the mandatory hook and a narration audio file. The cleaned narration must be 40–45 seconds; out-of-range audio is rejected before image review rather than cut or time-stretched.
+1. From iPhone Safari, submit the mandatory hook and a narration audio file. Narration duration is unrestricted: the complete uploaded recording is processed, whether short or long. The system does not impose a fixed total-duration target or time-stretch speech.
 2. Cloudflare Pages stores the audio and job metadata in the private `SHORTS_TEMP` Workers KV namespace and dispatches the `shorts-background.yml` workflow in `research` phase.
-3. The temporary GitHub-hosted Linux runner transcribes the audio, creates word-aligned visual beats with a 2.8-second maximum, researches real-photo candidates from open/licensed sources, and uses CLIP to rank for scene relevance while explicitly down-ranking illustrations, paintings, sketches, CGI, 3D renders and synthetic imagery. For a 40–45 second narration this normally produces about 15–16 image scenes. It uploads candidate previews and a review manifest, then stops at `awaiting_approval`; it does not render.
+3. The temporary GitHub-hosted Linux runner transcribes the audio, creates word-aligned visual beats with a 2.8-second maximum, researches real-photo candidates from open/licensed sources, and uses CLIP to rank for scene relevance while explicitly down-ranking illustrations, paintings, sketches, CGI, 3D renders and synthetic imagery. Scene count scales with the actual narration length. It uploads candidate previews and a review manifest, then stops at `awaiting_approval`; it does not render.
 4. The user reviews each scene and selects one candidate. The authenticated approval endpoint stores the exact selected candidate IDs and dispatches the workflow in `render` phase. No render is allowed until every scene has a valid approved image.
 5. The render worker downloads those exact selected images, re-creates the same audio timeline and passes the approved image list to the renderer. It uploads the MP4, cleaned WAV and source/credits report to KV.
 6. The user downloads the MP4 and presses `İndirdim, projeyi sil` to delete the entire job prefix immediately. KV keys have a 24-hour expiry as a fallback.
@@ -61,9 +61,9 @@ The Python render engine searches Wikimedia Commons, Openverse and Library of Co
 - If iPhone Safari is closed, the GitHub-hosted runner continues. Reopen the site in the same browser profile to resume using the saved job token.
 - If the user does not download and confirm, the scheduled 24-hour expiry cleanup is the fallback.
 
-## 40–45 second photo-review profile
+## Duration-independent photo-review profile
 
-- The cleaned narration is accepted only when its duration is between 40.0 and 45.0 seconds. The system never cuts spoken words or time-stretches speech to force the target.
+- There is no fixed minimum or maximum narration duration. The full uploaded audio is processed; duration is measured dynamically and preserved in the final render.
 - Visual beats use the shared word-aligned planner (`max_words=7`, `max_seconds=2.8`) in both research and render phases so scene IDs and timestamps remain stable.
 - The review screen presents the scene text, time range, photo alternatives, provider, license and source-page link. One photo must be selected for every scene before the render workflow is dispatched.
 - If no verified candidate exists for a scene, research fails closed and asks for a retry; it does not silently substitute an unrelated graphic or generated image.
