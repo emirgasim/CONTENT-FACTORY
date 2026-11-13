@@ -27,7 +27,7 @@ from PIL import Image, ImageDraw, ImageFont
 APP_DIR = Path(__file__).resolve().parent
 TTS_INTERNAL_URL = os.getenv("TTS_INTERNAL_URL", "http://127.0.0.1:18083").rstrip("/")
 API_TOKEN = os.getenv("FACTORY_API_TOKEN", "")
-ASR_MODEL = os.getenv("ASR_MODEL_SIZE", "base")
+ASR_MODEL = os.getenv("ASR_MODEL_SIZE", "tiny")
 MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(30 * 1024 * 1024)))
 JOB_TTL_SECONDS = int(os.getenv("JOB_TTL_SECONDS", "7200"))
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
@@ -47,7 +47,9 @@ app.add_middleware(
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
-POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cf-render")
+POOL = ThreadPoolExecutor(max_workers=max(1, int(os.getenv("RENDER_JOB_WORKERS", "2"))), thread_name_prefix="cf-render")
+ASR_MODEL_INSTANCE = None
+ASR_MODEL_LOCK = threading.Lock()
 
 
 def require_access(x_factory_token: str | None = Header(default=None)) -> None:
@@ -245,8 +247,12 @@ def trim_silence(source: Path, output: Path) -> float:
 
 def transcribe_audio(audio_path: Path) -> list[dict[str, Any]]:
     """Transcribe with word timings so long narration is split into short visual beats."""
+    global ASR_MODEL_INSTANCE
     from faster_whisper import WhisperModel
-    model = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.getenv("CPU_THREADS", "2"))))
+    with ASR_MODEL_LOCK:
+        if ASR_MODEL_INSTANCE is None:
+            ASR_MODEL_INSTANCE = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.getenv("CPU_THREADS", "2"))))
+        model = ASR_MODEL_INSTANCE
     segments, _info = model.transcribe(
         str(audio_path), language="tr", beam_size=1, vad_filter=True,
         word_timestamps=True, condition_on_previous_text=False
@@ -689,7 +695,7 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
     with ThreadPoolExecutor(max_workers=min(10, len(providers))) as pool:
         futures = [pool.submit(provider, query, per_provider) for provider in providers]
         try:
-            for future in as_completed(futures, timeout=45):
+            for future in as_completed(futures, timeout=14):
                 try:
                     items = future.result()
                 except Exception:
@@ -978,7 +984,7 @@ def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Pa
         "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
         "-t", str(max(0.6, duration)),
         "-vf", zoom + ",scale=1080:1920:flags=lanczos,setsar=1,format=yuv420p",
-        "-r", "30", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)
+        "-r", "30", "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", str(output)
     ]
     result = run_command(args, timeout=300)
     if result.returncode != 0 or not output.exists():
@@ -1104,7 +1110,7 @@ def render_short_job(job_id: str) -> None:
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(cleaned_audio), "-map", "0:v:0", "-map", "1:a:0",
             "-t", str(duration), "-vf", "scale=1080:1920:flags=lanczos,setsar=1",
-            "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+            "-r", "25", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-threads", os.getenv("FFMPEG_THREADS", "2"),
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart", str(output_video)
         ], timeout=900)
