@@ -178,9 +178,10 @@ function extractSearchTerms(text,title){
 }
 function permittedLicense(label){
  const s=String(label||"").toLowerCase();
- if(/non.?commercial|\bnc\b|cc\s*by[- ]nc|\bnd\b|cc\s*by[- ]nd|no.?derivatives/.test(s))return false;
- return /^(?:cc0|cc\s*0|pdm|public domain|by|by-sa|cc-by|cc-by-sa)$/.test(s)||/cc0|cc\s*0|public domain|creative commons attribution(?:-sharealike)?/.test(s);
+ if(/non.?commercial|\bnc\b|\bnd\b|no.?derivatives/.test(s))return false;
+ return /cc0|cc\s*0|public domain|\bpdm\b|(^|[^a-z])(?:cc[- ]?)?by(?:[- ]?sa)?(?:[^a-z]|$)|creative commons attribution(?:-sharealike)?/.test(s);
 }
+
 function metaValue(meta,key){return String(meta?.[key]?.value||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();}
 async function searchCommons(query,continuation=null){
  const params=new URLSearchParams({
@@ -300,28 +301,8 @@ function loadOwnImages(files){
   const url=URL.createObjectURL(file),img=new Image();img.onload=()=>resolve({img,url,title:file.name,own:true});img.onerror=()=>{URL.revokeObjectURL(url);reject(Error(file.name+" okunamadı"));};img.src=url;
  })));
 }
-function drawPixelArt(ctx,x,y,size,caption,style,time){
- const unit=Math.max(6,Math.floor(size/18)),cols=[style.accent,style.accent2,style.paper,style.ink];
- const word=caption.toLowerCase();
- const block=(gx,gy,color=cols[(gx+gy)%cols.length])=>{ctx.fillStyle=color;ctx.fillRect(x+gx*unit,y+gy*unit,unit,unit);};
- if(/pac.?man|oyun|arcade|labirent|piksel|kod|bilgisayar/.test(word)){
-  for(let row=0;row<13;row++)for(let col=0;col<18;col++)if(row===0||row===12||col===0||col===17||((row===3||row===9)&&col>3&&col<14))block(col,row,style.ink);
-  for(let col=2;col<16;col+=2)block(col,6,style.paper);
-  const px=4+(Math.floor((Math.sin(time*2)+1)*2));
-  for(let yy=0;yy<5;yy++)for(let xx=0;xx<5;xx++){const dx=xx-2,dy=yy-2;if(dx*dx+dy*dy<=5&&!(xx>2&&Math.abs(yy-2)<=1))block(px+xx,4+yy,style.accent);}
-  for(let yy=0;yy<5;yy++)for(let xx=0;xx<5;xx++)if(yy===0||xx===0||xx===4||yy===4)block(11+xx,4+yy,style.accent2);
- }else if(/minecraft|blok|inşa|harita|orman|ağaç|doğa/.test(word)){
-  for(let col=0;col<18;col++)for(let row=10;row<14;row++)block(col,row,row===10?style.accent2:"#8B552D");
-  for(const [tx,ty] of [[2,5],[7,3],[13,5]]){for(let yy=0;yy<5;yy++)for(let xx=0;xx<5;xx++)block(tx+xx,ty+yy,style.accent);for(let yy=0;yy<3;yy++)block(tx+2,ty+5+yy,"#8B552D");}
-  for(let col=2;col<6;col++)block(col,2,style.paper);
- }else{
-  for(let row=0;row<14;row++)for(let col=0;col<18;col++){
-   const dx=col-9,dy=row-7,dist=Math.hypot(dx,dy);
-   if(dist<5.5&&((col+row)%3!==0))block(col,row,dist<2.5?style.accent2:dist<4?style.accent:style.paper);
-  }
-  for(let i=0;i<6;i++)block(6+i,7,style.ink);
- }
-}
+
+
 function buildAudioMotion(buffer){
  const hop=Math.max(256,Math.floor(buffer.sampleRate*.025)),count=Math.ceil(buffer.length/hop),values=new Float32Array(count);
  for(let frame=0;frame<count;frame++){
@@ -364,13 +345,8 @@ function drawImageInFrame(ctx,image,x,y,width,height,time,style,motion){
  ctx.drawImage(image,sx,sy,sw,sh,x,y,width,height);
 }
 
-function drawImageInSquare(ctx,image,x,y,size,time,style){
- const zoom=1.04+.035*(.5+.5*Math.sin(time*1.1+style.shapeSeed)),iw=image.width,ih=image.height;
- const scale=Math.max(size/iw,size/ih)*zoom,sw=size/scale,sh=size/scale;
- const panX=.5+.12*Math.sin(time*.48+style.shapeSeed),panY=.5+.08*Math.cos(time*.42+style.shapeSeed);
- const sx=Math.max(0,Math.min(iw-sw,(iw-sw)*panX)),sy=Math.max(0,Math.min(ih-sh,(ih-sh)*panY));
- ctx.drawImage(image,sx,sy,sw,sh,x,y,size,size);
-}
+
+
 function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook,motion){
  const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
  const style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.max(0,Math.min(1,time/duration));
