@@ -156,7 +156,7 @@ function auditSceneContrast(styles){
 
 function extractSearchTerms(text,title){
  const aliases={
-  "oyun":"video game arcade","menü":"video game menu","menu":"video game menu","minecraft":"Minecraft voxel game","pacman":"Pac-Man arcade maze",
+  "oyun":"video game arcade","menü":"video game menu","menu":"video game menu","minecraft":"Minecraft video game landscape","pacman":"Pac-Man arcade maze","rocky":"Rocky film","stallone":"Sylvester Stallone","sylvester":"Sylvester Stallone","köpek":"dog","köpeği":"dog","köpeğin":"dog","köpeğini":"dog","butkus":"Butkus dog","senaryo":"screenplay","senaryoyu":"screenplay",
   "harita":"map","gizem":"mystery","gizli":"secret","sır":"mystery","tarih":"history","dünya":"earth planet",
   "uzay":"outer space","gezegen":"planet","insan":"human","hayvan":"animal","kedi":"cat","köpek":"dog",
   "bilgisayar":"computer","teknoloji":"technology","yasa":"law","yasak":"banned","yasaklanan":"banned",
@@ -212,18 +212,21 @@ async function searchCommons(query,continuation=null){
 function loadImage(item){
  return new Promise((resolve,reject)=>{
   const img=new Image(),timer=setTimeout(()=>{img.src="";reject(Error("Görsel zaman aşımı"));},12000);
-  img.crossOrigin="anonymous";img.decoding="async";
+  img.crossOrigin="anonymous";img.decoding="async";img.referrerPolicy="no-referrer";
   img.onload=()=>{clearTimeout(timer);resolve({...item,img});};
   img.onerror=()=>{clearTimeout(timer);reject(Error("Görsel yüklenemedi veya CORS izni yok"));};
-  img.src=item.url;
+  img.src=item.proxyUrl||item.url;
  });
 }
 function searchQueryVariants(sceneText,title){
- const main=extractSearchTerms(sceneText,title);
- const secondary=extractSearchTerms(title,"");
- const sceneOnly=extractSearchTerms(sceneText,"");
- return [...new Set([main,secondary,sceneOnly].filter(Boolean))];
+ const topic=extractSearchTerms(title,""),scene=extractSearchTerms(sceneText,"");
+ const raw=(String(title||"")+" "+String(sceneText||"")).toLocaleLowerCase("tr-TR");
+ const variants=[scene+" "+topic,scene,topic];
+ if(/rocky|stallone|butkus/.test(raw))variants.unshift("Sylvester Stallone Rocky film dog Butkus");
+ if(/minecraft|blok|oyun/.test(raw))variants.unshift("Minecraft video game landscape gameplay");
+ return [...new Set(variants.map(x=>x.replace(/\s+/g," ").trim()).filter(x=>x.length>=3))].slice(0,5);
 }
+
 function sceneImageTarget(scene){
  // One context-matched visual per complete sentence/clause; scene duration is proportional to spoken word count.
  return 1;
@@ -262,43 +265,36 @@ async function searchSource(source,query,continuation=null){
 }
 async function searchSceneAssets(timeline,title,ownImages){
  const assets=new Array(timeline.length).fill(null),credits=[],usedUrls=new Set(),own=ownImages||[];
- const sources=["Wikimedia Commons","Openverse","Library of Congress"];
  const jobs=timeline.map((scene,i)=>({scene,i,queries:searchQueryVariants(scene.caption,title)}));
  let cursor=0;
- const workers=Array.from({length:3},async()=>{
+ const workers=Array.from({length:4},async()=>{
   while(cursor<jobs.length){
    const job=jobs[cursor++];
-   // Rotate source order per scene to avoid a single-provider dependency.
-   const ordered=[...sources.slice(job.i%sources.length),...sources.slice(0,job.i%sources.length)];
    for(const query of job.queries){
     if(assets[job.i])break;
-    for(const source of ordered){
-     try{
-      let continuation=null,attempts=0;
-      do{
-       const page=await searchSource(source,query,continuation);
-       for(const item of page.items){
-        if(assets[job.i])break;
-        if(!item.url||usedUrls.has(item.url))continue;
-        usedUrls.add(item.url);
-        try{
-         const loaded=await loadImage(item);
-         assets[job.i]=loaded;credits.push(loaded);
-        }catch(e){console.warn("Image skipped (load/CORS):",item.title,e);}
-       }
-       continuation=page.continuation;attempts++;
-      }while(!assets[job.i]&&continuation!==null&&attempts<4);
+    try{
+     const response=await fetch("/api/visual-search?q="+encodeURIComponent(query),{headers:{"Accept":"application/json"},cache:"force-cache"});
+     if(!response.ok)throw Error("Stok görsel araması HTTP "+response.status);
+     const payload=await response.json();
+     for(const item of payload.items||[]){
       if(assets[job.i])break;
-     }catch(e){console.warn(source+" search failed:",query,e);}
-    }
+      if(!item.url||usedUrls.has(item.url))continue;
+      usedUrls.add(item.url);
+      try{const loaded=await loadImage(item);assets[job.i]=loaded;credits.push(loaded);}
+      catch(error){console.warn("Stock image proxy could not load:",item.title,error);}
+     }
+    }catch(error){console.warn("Stock search failed:",query,error);}
    }
    if(!assets[job.i]&&own.length)assets[job.i]=own[job.i%own.length];
   }
  });
  await Promise.all(workers);
- const found=assets.filter(Boolean).length;
- return{assets,credits,required:timeline.length,found};
+ const unique=assets.filter(Boolean).filter((item,index,list)=>list.findIndex(x=>(x.originalUrl||x.url)===(item.originalUrl||item.url))===index);
+ if(!unique.length)throw Error("Konuya uygun gerçek stok fotoğrafı bulunamadı. Piksel çizim veya geometrik görsel üretmek yerine render durduruldu. İnternet bağlantısını kontrol edip yeniden dene.");
+ for(let i=0;i<assets.length;i++)if(!assets[i])assets[i]=unique[i%unique.length];
+ return{assets,credits:unique,required:timeline.length,found:assets.filter(Boolean).length,unique:unique.length};
 }
+
 function loadOwnImages(files){
  return Promise.all(files.map(file=>new Promise((resolve,reject)=>{
   const url=URL.createObjectURL(file),img=new Image();img.onload=()=>resolve({img,url,title:file.name,own:true});img.onerror=()=>{URL.revokeObjectURL(url);reject(Error(file.name+" okunamadı"));};img.src=url;
@@ -326,38 +322,48 @@ function drawPixelArt(ctx,x,y,size,caption,style,time){
   for(let i=0;i<6;i++)block(6+i,7,style.ink);
  }
 }
-function drawBackdrop(ctx,w,h,t,style){
- ctx.fillStyle=style.bg;ctx.fillRect(0,0,w,h);
- const drift=Math.sin(t*1.1)*w*.018;
- ctx.save();ctx.translate(drift,Math.cos(t*.8)*h*.012);ctx.globalAlpha=1;
- if(style.layout===0){
-  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(w*.72,0);ctx.lineTo(w,0);ctx.lineTo(w,h*.48);ctx.lineTo(w*.56,h*.27);ctx.closePath();ctx.fill();
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.06,h*.84,w*.22,0,Math.PI*2);ctx.fill();
- }else if(style.layout===1){
-  ctx.fillStyle=style.accent;ctx.fillRect(w*.76,0,w*.24,h*.48);
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.08,h*.18,w*.16,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle=style.hookPlate;for(let i=0;i<5;i++)ctx.fillRect(w*(.12+i*.038),h*.74,w*.014,h*.07);
- }else if(style.layout===2){
-  ctx.fillStyle=style.accent;ctx.beginPath();ctx.arc(w*.94,h*.14,w*.24,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.04,h*.83,w*.27,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle=style.hookPlate;ctx.lineWidth=w*.012;for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(w*.84,h*.16,w*(.09+i*.055),0,Math.PI*2);ctx.stroke();}
- }else if(style.layout===3){
-  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(0,h*.16);ctx.lineTo(w*.3,0);ctx.lineTo(w*.46,h*.35);ctx.lineTo(0,h*.52);ctx.closePath();ctx.fill();
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.moveTo(w*.72,h);ctx.lineTo(w,h*.62);ctx.lineTo(w,h);ctx.closePath();ctx.fill();
- }else if(style.layout===4){
-  ctx.fillStyle=style.accent;for(let i=0;i<7;i++){ctx.save();ctx.translate(w*(.82+(i%2)*.06),h*(.12+i*.07));ctx.rotate(t*.18+i*.3);ctx.fillRect(-w*.016,-h*.12,w*.032,h*.24);ctx.restore();}
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.08,h*.78,w*.2,0,Math.PI*2);ctx.fill();
- }else if(style.layout===5){
-  ctx.fillStyle=style.accent;ctx.fillRect(0,h*.08,w*.11,h*.36);ctx.fillRect(w*.89,h*.56,w*.11,h*.34);
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.moveTo(w*.7,0);ctx.lineTo(w,0);ctx.lineTo(w,h*.23);ctx.closePath();ctx.fill();
- }else{
-  ctx.fillStyle=style.accent;ctx.beginPath();ctx.moveTo(0,h*.64);ctx.lineTo(w*.22,h*.47);ctx.lineTo(w*.38,h*.68);ctx.lineTo(w*.56,h*.49);ctx.lineTo(w*.76,h*.68);ctx.lineTo(0,h*.94);ctx.closePath();ctx.fill();
-  ctx.fillStyle=style.accent2;ctx.beginPath();ctx.arc(w*.94,h*.15,w*.17,0,Math.PI*2);ctx.fill();
+function buildAudioMotion(buffer){
+ const hop=Math.max(256,Math.floor(buffer.sampleRate*.025)),count=Math.ceil(buffer.length/hop),values=new Float32Array(count);
+ for(let frame=0;frame<count;frame++){
+  const start=frame*hop,end=Math.min(buffer.length,start+hop);let sum=0,samples=0;
+  for(let channel=0;channel<buffer.numberOfChannels;channel++){const data=buffer.getChannelData(channel);for(let i=start;i<end;i+=4){const v=data[i];sum+=v*v;samples++;}}
+  values[frame]=Math.sqrt(sum/Math.max(1,samples));
  }
- ctx.fillStyle=style.hookPlate;const dot=w*.006;
- for(let row=0;row<6;row++)for(let col=0;col<6;col++){const xx=w*.08+col*w*.027,yy=h*.035+row*h*.018;ctx.globalAlpha=.34;ctx.beginPath();ctx.arc(xx,yy,dot,0,Math.PI*2);ctx.fill();}
+ const peak=Math.max(.001,percentile(Array.from(values),.92));
+ return{step:hop/buffer.sampleRate,values,peak};
+}
+function audioMotionAt(motion,time){
+ if(!motion?.values?.length)return{energy:.25,hit:0};
+ const position=Math.max(0,time/motion.step),index=Math.min(motion.values.length-1,Math.floor(position));
+ const next=Math.min(motion.values.length-1,index+1),fraction=position-index;
+ const current=motion.values[index]*(1-fraction)+motion.values[next]*fraction,previous=motion.values[Math.max(0,index-2)];
+ return{energy:Math.max(0,Math.min(1.4,current/motion.peak)),hit:Math.max(0,Math.min(1,(current-previous)/motion.peak*2.8))};
+}
+function drawBackdrop(ctx,w,h,t,style,motion){
+ const {energy,hit}=audioMotionAt(motion,t),pulse=.72+energy*.42+hit*.34;
+ const gradient=ctx.createLinearGradient(w*(.12+Math.sin(t*.22)*.2),0,w*(.82+Math.cos(t*.19)*.12),h);
+ gradient.addColorStop(0,style.bg);gradient.addColorStop(.52,style.accent);gradient.addColorStop(1,style.accent2);
+ ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);
+ ctx.save();ctx.globalCompositeOperation="screen";
+ const glow=(x,y,r,color,alpha)=>{const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,"rgba(0,0,0,0)");ctx.globalAlpha=alpha;ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();};
+ glow(w*(.14+.12*Math.sin(t*.42)),h*(.22+.05*Math.cos(t*.6)),w*(.42+.08*pulse),style.accent2,.42);
+ glow(w*(.88+.07*Math.cos(t*.34)),h*(.72+.07*Math.sin(t*.51)),w*(.48+.1*pulse),style.accent,.38);
+ ctx.globalAlpha=.16+.09*energy;ctx.strokeStyle="#FFFFFF";ctx.lineWidth=Math.max(3,w*.006);
+ for(let ring=0;ring<5;ring++){const radius=w*(.13+ring*.07)+Math.sin(t*2.4+ring)*w*.012*pulse;ctx.beginPath();ctx.ellipse(w*(.5+.28*Math.sin(t*.18+ring)),h*(.48+.22*Math.cos(t*.16+ring)),radius,radius*1.28,t*.08+ring*.22,0,Math.PI*2);ctx.stroke();}
+ ctx.globalAlpha=.16+.14*hit;ctx.lineWidth=Math.max(5,w*.009);ctx.beginPath();
+ for(let x=0;x<=w;x+=w/60){const phase=x/w*Math.PI*5-t*3.1,y=h*(.52+Math.sin(phase)*(.035+.045*energy)+Math.sin(phase*.43+t)*.02);if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
+ ctx.globalAlpha=.12+.12*energy;ctx.fillStyle=style.hookPlate;
+ for(let i=0;i<18;i++){const x=((i*.173*w+t*w*.035)%w),y=(.12+(i%6)*.145)*h+Math.sin(t*1.5+i)*h*.018*pulse,r=w*(.004+(i%3)*.002)*(1+hit);ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
  ctx.restore();
 }
+function drawImageInFrame(ctx,image,x,y,width,height,time,style,motion){
+ const {energy,hit}=audioMotionAt(motion,time),zoom=1.045+.04*energy+.018*hit;
+ const iw=image.width,ih=image.height,scale=Math.max(width/iw,height/ih)*zoom,sw=width/scale,sh=height/scale;
+ const panX=.5+.10*Math.sin(time*.38+style.shapeSeed),panY=.5+.07*Math.cos(time*.31+style.shapeSeed);
+ const sx=Math.max(0,Math.min(iw-sw,(iw-sw)*panX)),sy=Math.max(0,Math.min(ih-sh,(ih-sh)*panY));
+ ctx.drawImage(image,sx,sy,sw,sh,x,y,width,height);
+}
+
 function drawImageInSquare(ctx,image,x,y,size,time,style){
  const zoom=1.04+.035*(.5+.5*Math.sin(time*1.1+style.shapeSeed)),iw=image.width,ih=image.height;
  const scale=Math.max(size/iw,size/ih)*zoom,sw=size/scale,sh=size/scale;
@@ -365,50 +371,39 @@ function drawImageInSquare(ctx,image,x,y,size,time,style){
  const sx=Math.max(0,Math.min(iw-sw,(iw-sw)*panX)),sy=Math.max(0,Math.min(ih-sh,(ih-sh)*panY));
  ctx.drawImage(image,sx,sy,sw,sh,x,y,size,size);
 }
-function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook){
+function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook,motion){
  const scene=timeline.find(x=>time>=x.start&&time<x.end)||timeline[timeline.length-1];
  const style=styles[scene.index],local=Math.max(0,time-scene.start),progress=Math.max(0,Math.min(1,time/duration));
- const sceneAsset=assets[scene.index],image=sceneAsset?.img||null;
- drawBackdrop(ctx,w,h,time,style);
- // Fixed center / chest-level square visual stage.
- const size=Math.min(w*.83,h*.49),x=(w-size)/2,y=h*.175;
- ctx.save();ctx.shadowColor="rgba(0,0,0,.3)";ctx.shadowBlur=w*.035;ctx.shadowOffsetY=h*.012;ctx.fillStyle="#101018";
- ctx.beginPath();ctx.roundRect(x-w*.014,y-w*.014,size+w*.028,size+w*.028,w*.035);ctx.fill();ctx.restore();
- ctx.save();ctx.beginPath();ctx.roundRect(x,y,size,size,w*.018);ctx.clip();
- if(image)drawImageInSquare(ctx,image,x,y,size,local,style);
- else{ctx.fillStyle="#A7E3FF";ctx.fillRect(x,y,size,size);drawPixelArt(ctx,x+size*.08,y+size*.10,size*.84,scene.caption,style,local);}
- // Solid color tabs frame the illustration, avoiding overlays across the image.
- ctx.fillStyle=style.accent;ctx.fillRect(x,y,size*.2,Math.max(8,w*.014));
- ctx.fillStyle=style.accent2;ctx.fillRect(x+size*.8,y+size*.97,size*.2,Math.max(8,w*.014));
- ctx.restore();
-
- // Hook: manually entered one-line/ two-line attention banner at the top.
+ const image=assets[scene.index]?.img||null;
+ drawBackdrop(ctx,w,h,time,style,motion);
+ const frameW=w*.90,frameH=h*.375,x=(w-frameW)/2,y=h*.235;
+ ctx.save();ctx.shadowColor=style.accent2;ctx.shadowBlur=w*(.035+audioMotionAt(motion,time).hit*.025);ctx.shadowOffsetY=h*.012;
+ ctx.fillStyle="#101018";ctx.beginPath();ctx.roundRect(x-w*.014,y-w*.014,frameW+w*.028,frameH+w*.028,w*.035);ctx.fill();ctx.restore();
+ ctx.save();ctx.beginPath();ctx.roundRect(x,y,frameW,frameH,w*.022);ctx.clip();
+ if(!image)throw Error("Stok görsel eksik; yapay çizimle devam edilmeyecek.");
+ drawImageInFrame(ctx,image,x,y,frameW,frameH,local,style,motion);
+ const shade=ctx.createLinearGradient(0,y,0,y+frameH);shade.addColorStop(0,"rgba(0,0,0,.02)");shade.addColorStop(.72,"rgba(0,0,0,0)");shade.addColorStop(1,"rgba(0,0,0,.18)");
+ ctx.fillStyle=shade;ctx.fillRect(x,y,frameW,frameH);ctx.restore();
+ ctx.save();ctx.strokeStyle=style.hookPlate;ctx.lineWidth=Math.max(4,w*.006);ctx.globalAlpha=.9;ctx.beginPath();ctx.roundRect(x,y,frameW,frameH,w*.022);ctx.stroke();ctx.restore();
  if(hook){
-  const hookFont=Math.round(w*.044);ctx.font="900 "+hookFont+"px system-ui, -apple-system, sans-serif";
-  const hookLines=wrapLines(ctx,hook,w*.82,2),hookHeight=hookLines.length*hookFont*1.16+hookFont*.72;
-  const hookWidth=w*.9,hookX=(w-hookWidth)/2,hookY=h*.035;
-  rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.018,style.hookPlate);
-  ctx.fillStyle=style.hookText;ctx.textAlign="center";ctx.textBaseline="middle";
-  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+hookFont*.36+hookFont*1.16*(i+.5)));
+  const hookFont=Math.round(w*.041);ctx.font="900 "+hookFont+"px system-ui, -apple-system, sans-serif";
+  const hookLines=wrapLines(ctx,hook,w*.82,2),hookHeight=hookLines.length*hookFont*1.12+hookFont*.56;
+  const hookWidth=w*.9,hookX=(w-hookWidth)/2,hookY=h*.075;
+  rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.022,"#FFFFFF");
+  ctx.fillStyle="#101018";ctx.textAlign="center";ctx.textBaseline="middle";
+  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+hookFont*.28+hookFont*1.12*(i+.5)));
  }
-
- // Caption: no outline/stroke. Black sits on a light plate, white on a saturated plate.
  const caption=scene.caption.trim();
- let font=Math.round(w*(caption.split(/\s+/).length<5?.078:caption.split(/\s+/).length<9?.069:.061));
- let lines=[];
+ let font=Math.round(w*(caption.split(/\s+/).length<5?.078:caption.split(/\s+/).length<9?.069:.061)),lines=[];
  ctx.textAlign="center";ctx.textBaseline="middle";
- do{ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";lines=wrapLines(ctx,caption,w*.83,3);if(lines.length>3)font-=2;}while(lines.length>3&&font>w*.045);
+ do{ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";lines=wrapLines(ctx,caption,w*.84,3);if(lines.length>3)font-=2;}while(lines.length>3&&font>w*.045);
  const lineHeight=font*1.14,plaqueHeight=lines.length*lineHeight+font*.62,plaqueWidth=w*.91;
  const plaqueX=(w-plaqueWidth)/2,plaqueY=h*.735-plaqueHeight/2;
- rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,0,style.captionPlate);
- ctx.fillStyle=style.captionText;
- lines.forEach((line,i)=>ctx.fillText(line,w/2,plaqueY+font*.31+lineHeight*(i+.5)));
-
- // Video-duration bar uses the exact audio clock fraction on every frame.
- const barH=Math.max(8,h*.009),barY=h*.982;
- ctx.fillStyle=style.progressTrack;ctx.fillRect(0,barY,w,barH);
- ctx.fillStyle=style.progressFill;ctx.fillRect(0,barY,w*progress,barH);
+ rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,w*.012,style.captionPlate);
+ ctx.fillStyle=style.captionText;lines.forEach((line,i)=>ctx.fillText(line,w/2,plaqueY+font*.31+lineHeight*(i+.5)));
+ const barH=Math.max(8,h*.009),barY=h*.982;ctx.fillStyle=style.progressTrack;ctx.fillRect(0,barY,w,barH);ctx.fillStyle=style.progressFill;ctx.fillRect(0,barY,w*progress,barH);
 }
+
 function wrapLines(ctx,text,maxWidth,maxLines){
  const words=text.split(/\s+/),lines=[];let line="";
  for(const word of words){const test=(line+" "+word).trim();if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word;}else line=test;}
@@ -424,7 +419,7 @@ async function verifyVideoDuration(blob,expected){
  });}catch(e){throw e;}
 }
 async function renderLocally(){
- const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),file=state.reference;
+ const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Shorts",hook=$("#hookText").value.trim(),file=state.reference;
  if(!text||!file)throw Error("Önce metin ve ses dosyası ekle.");
  if(!hook)throw Error("Her Shorts için üstte görünecek kanca yazısını gir.");
  const Audio=window.AudioContext||window.webkitAudioContext;
@@ -438,11 +433,11 @@ async function renderLocally(){
  setProgress(10);setText("#renderStatus","Ses dalgası analiz ediliyor; konuşmayı koruyan sessizlik temizliği yapılıyor…");
  const analysis=detectSpeech(decoded),clean=concatenateAudio(decoded,analysis);
  if(clean.duration<4)throw Error("Temizlenmiş ses çok kısa. Farklı bir kayıt seç.");
- const timeline=timelineFor(text,clean.duration),seed=randomSeed(),rawStyles=makeSceneStyles(timeline.length,seed),contrastAudit=auditSceneContrast(rawStyles),styles=contrastAudit.styles;
+ const timeline=timelineFor(text,clean.duration),audioMotion=buildAudioMotion(clean),seed=randomSeed(),rawStyles=makeSceneStyles(timeline.length,seed),contrastAudit=auditSceneContrast(rawStyles),styles=contrastAudit.styles;
  const ownImages=await loadOwnImages(state.visualFiles||[]);
  setProgress(15);setText("#renderStatus",timeline.length+" cümle/ifade sahnesi için farklı açık görsel kaynaklarında konuya uygun görseller aranıyor…");
  const found=await searchSceneAssets(timeline,title,ownImages),assets=found.assets;
- const imageCount=found.found;
+ const imageCount=found.found;\n  if(found.unique<Math.min(2,timeline.length))throw Error("Yeterli sayıda konuya uygun gerçek stok fotoğrafı bulunamadı ("+found.unique+" farklı görsel). Sahte çizim veya geometrik görsel yerine render durduruldu. Biraz sonra tekrar dene.");
  setProgress(30);setText("#renderStatus",imageCount+"/"+found.required+" cümle sahnesine görsel bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
@@ -463,18 +458,18 @@ async function renderLocally(){
   const chunks=[];
   recorder.onerror=()=>fail(Error("Safari MP4 kodlama işlemini durdurdu."));
   recorder.onstop=()=>{stopTracks();if(settled)return;const blob=new Blob(chunks,{type:recorder.mimeType||mime});if(blob.size<80000)fail(Error("MP4 kaydı boş veya eksik. Kaliteyi 720p yapıp yeniden dene."));else{settled=true;resolve(blob);}};
-  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook);videoTrack?.requestFrame?.();setProgress(96);finishDelay=setTimeout(finish,350);};
+  source.onended=()=>{drawFrame(ctx,w,h,clean.duration,clean.duration,timeline,assets,title,styles,hook,audioMotion);videoTrack?.requestFrame?.();setProgress(96);finishDelay=setTimeout(finish,350);};
   try{recorder.start();}catch(e){fail(Error("Safari kayıt başlatamadı: "+e.message));return;}
   startedAt=audioContext.currentTime;
   finishTimer=setTimeout(()=>{if(!stopped)fail(Error("Sesin tamamı çalınmadan render zaman aşımına uğradı. Safari'yi önde tut ve 720p ile tekrar dene."));},Math.ceil(clean.duration*1000)+18000);
   const frame=()=>{
    if(stopped)return;
    const elapsed=Math.min(clean.duration,Math.max(0,audioContext.currentTime-startedAt));
-   drawFrame(ctx,w,h,elapsed,clean.duration,timeline,assets,title,styles,hook);
+   drawFrame(ctx,w,h,elapsed,clean.duration,timeline,assets,title,styles,hook,audioMotion);
    setProgress(30+Math.round(62*elapsed/clean.duration));
    if(elapsed<clean.duration-.02)raf=requestAnimationFrame(frame);
   };
-  drawFrame(ctx,w,h,0,clean.duration,timeline,assets,title,styles,hook);
+  drawFrame(ctx,w,h,0,clean.duration,timeline,assets,title,styles,hook,audioMotion);
   raf=requestAnimationFrame(frame);source.start();
  });
  let blob;
@@ -482,13 +477,13 @@ async function renderLocally(){
  finally{await cleanup();}
  revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
  state.videoUrl=URL.createObjectURL(blob);state.audioUrl=URL.createObjectURL(wavBlob(clean));
- const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Kanca: "+(hook||"(manuel kanca girilmedi)"),"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Bu rendera özel rastgele oluşturulmuş renk/şekil kompozisyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
+ const creditLines=["CONTENT FACTORY — KAYNAK VE LİSANS KAYDI","Başlık: "+title,"Kanca: "+(hook||"(manuel kanca girilmedi)"),"Orijinal ses: "+decoded.duration.toFixed(2)+" sn","Üretilen video: "+clean.duration.toFixed(2)+" sn","Temizlenen sessizlik: "+analysis.removed.toFixed(2)+" sn","Arka plan: Ses genliğiyle eşzamanlı hareket eden canlı degrade, ışık halkaları ve dalga animasyonu","Kontrast kalite kontrolü: "+contrastAudit.scenes+" sahne, minimum "+contrastAudit.minContrast.toFixed(1)+":1, WCAG AA eşiği 4.5:1 üzerinde",""];
  for(let i=0;i<assets.length;i++){for(let j=0;j<(assets[i]?1:0);j++){const item=assets[i];if(!item)continue;if(item.own){creditLines.push("Sahne "+(i+1)+": Kullanıcının yüklediği görsel — "+item.title);}else{creditLines.push("Sahne "+(i+1)+": "+item.title,"Kaynak: "+(item.source||"Açık görsel koleksiyonu"),"Yazar: "+item.author,"Lisans: "+item.license,"Lisans bağlantısı: "+item.licenseUrl,"Dosya sayfası: "+item.pageUrl,"");}}}
  if(!imageCount)creditLines.push("Commons aramasında uygun görsel bulunamadı; bu sahneler özgün grafik illüstrasyonlarıyla oluşturuldu.");
  creditLines.push("Not: Wikimedia Commons dosyalarının her biri kendi dosya sayfasındaki lisans ve atıf koşullarıyla yeniden kullanılmalıdır.");
  state.creditsUrl=URL.createObjectURL(new Blob([creditLines.join("\n")],{type:"text/plain;charset=utf-8"}));
  $("#finalVideo").src=state.videoUrl;
- $("#renderStats").textContent="MP4 · "+w+"×"+h+" · "+clean.duration.toFixed(1)+" sn (orijinal "+decoded.duration.toFixed(1)+" sn) · "+analysis.removed.toFixed(1)+" sn sessizlik azaltıldı · "+imageCount+"/"+timeline.length+" sahnede internet/kullanıcı görseli · solid cartoon arka plan · kontrast kontrolü "+contrastAudit.minContrast.toFixed(1)+":1";
+ $("#renderStats").textContent="MP4 · "+w+"×"+h+" · "+clean.duration.toFixed(1)+" sn (orijinal "+decoded.duration.toFixed(1)+" sn) · "+analysis.removed.toFixed(1)+" sn sessizlik azaltıldı · "+imageCount+"/"+timeline.length+" sahnede internet/kullanıcı görseli · ses tepkili animasyonlu degrade · kontrast kontrolü "+contrastAudit.minContrast.toFixed(1)+":1";
  $("#renderResult").classList.remove("hidden");setProgress(100);
  setText("#renderStatus","MP4 tamamlandı ve süre doğrulandı. Önizle, MP4'ü ve kaynak/lisans listesini kaydet.");
 }
