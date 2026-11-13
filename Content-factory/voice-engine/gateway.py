@@ -914,74 +914,69 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
+    """Dynamic Shorts frame: full-screen relevant image, centered subtitles, no empty footer."""
     width, height = 1080, 1920
-    background = "#10151E"
-    panel = "#1A2230"
-    accent = "#E8B968"
-    primary_asset = None
-    if assets:
-        try:
-            primary_asset = Image.open(assets[0][0]).convert("RGB")
-        except Exception:
-            primary_asset = None
-    if primary_asset is None:
+    if not assets:
         raise RuntimeError("Bu sahne için doğrulanmış görsel bulunamadı.")
+    try:
+        with Image.open(assets[0][0]) as source:
+            photo = cover_image(source, (width, height))
+    except Exception as exc:
+        raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
 
-    canvas = Image.new("RGB", (width, height), background)
+    photo = Image.blend(photo, Image.new("RGB", (width, height), "#10151E"), 0.12)
+    canvas = photo.convert("RGBA")
+    shade = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    shade_draw = ImageDraw.Draw(shade)
+    shade_draw.rectangle((0, 0, width, 260), fill=(0, 0, 0, 70))
+    shade_draw.rectangle((0, 650, width, 1500), fill=(0, 0, 0, 24))
+    canvas = Image.alpha_composite(canvas, shade)
     draw = ImageDraw.Draw(canvas)
 
-    # Quiet editorial header; the hook is shown only on the opening scene.
-    eyebrow_font = load_font(30)
-    hook_font = load_font(48)
-    title_text = re.sub(r"\s+", " ", str(title or "SHORTS")).strip()[:72]
-    draw.text((72, 66), title_text, font=eyebrow_font, fill="#B9C4D3")
-    draw.rectangle((72, 122, 1008, 128), fill=accent)
-
+    # Hook appears only on the opening shot.
     if index == 0 and hook:
-        hook_lines = wrap_lines(draw, re.sub(r"\s+", " ", str(hook).strip()), hook_font, 920)[:2]
-        y = 150
+        hook_font = load_font(42)
+        hook_lines = wrap_lines(draw, re.sub(r"\\s+", " ", str(hook).strip()), hook_font, 900)[:2]
+        y = 100
         for line in hook_lines:
-            draw.text((72, y), line, font=hook_font, fill="#F6F7FA")
-            y += 58
+            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=1)
+            x = (width - (bbox[2] - bbox[0])) // 2
+            draw.text((x + 2, y + 2), line, font=hook_font, fill="#000000", stroke_width=3, stroke_fill="#000000")
+            draw.text((x, y), line, font=hook_font, fill="#FFFFFF", stroke_width=1, stroke_fill="#111111")
+            y += 56
 
-    # A contained, balanced image card replaces the full-bleed image and flashing bands.
-    image_box = (72, 270, 1008, 1070)
-    image = cover_image(primary_asset, (image_box[2] - image_box[0], image_box[3] - image_box[1]))
-    canvas.paste(image, (image_box[0], image_box[1]))
-    draw = ImageDraw.Draw(canvas)
-    draw_rounded_compat(draw, image_box, radius=28, outline="#344052", width=3)
-
-    # Caption stays in a calm dark panel with generous but purposeful spacing.
-    panel_box = (72, 1110, 1008, 1810)
-    draw_rounded_compat(draw, panel_box, radius=30, fill=panel, outline="#293648", width=2)
-    draw.rounded_rectangle((112, 1190, 122, 1725), radius=5, fill=accent)
-
-    caption = compact_scene_caption(
-        (group.get("text") or title or "Öne çıkan detay").strip(),
-        max_words=15,
-        max_chars=120,
-    )
+    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(), max_words=12, max_chars=96)
     words = caption.split()
-    caption_size = 60 if len(words) <= 10 else 54
-    caption_font = load_font(caption_size)
-    lines = wrap_lines(draw, caption, caption_font, 805)[:4]
-    line_height = int(caption_font.size * 1.24)
-    total_height = len(lines) * line_height
-    y = panel_box[1] + max(55, (panel_box[3] - panel_box[1] - total_height) // 2)
+    font = load_font(70 if len(words) <= 8 else 62)
+    lines = wrap_lines(draw, caption, font, 900)[:3]
+    line_height = int(font.size * 1.18)
+    text_height = len(lines) * line_height
+    panel_width = min(990, max((draw.textbbox((0, 0), line, font=font)[2] for line in lines), default=500) + 72)
+    panel_height = text_height + 54
+    panel_left = (width - panel_width) // 2
+    panel_top = 1000 - panel_height // 2
+    draw_rounded_compat(draw, (panel_left, panel_top, panel_left + panel_width, panel_top + panel_height),
+                        radius=26, fill=(0, 0, 0, 168), outline=(255, 255, 255, 38), width=2)
+    y = panel_top + 27
     for line in lines:
-        draw.text((160, y), line, font=caption_font, fill="#F3F5F8")
+        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=1)
+        x = (width - (bbox[2] - bbox[0])) // 2
+        draw.text((x + 2, y + 3), line, font=font, fill="#000000", stroke_width=3, stroke_fill="#000000")
+        draw.text((x, y), line, font=font, fill="#FFFFFF", stroke_width=1, stroke_fill="#171717")
         y += line_height
+    canvas.convert("RGB").save(output, quality=95)
 
-    canvas.save(output, quality=95)
+
 
 def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
-    # Subtle camera movement only. No rainbow hue cycling or decorative waveforms.
-    zoom = "zoompan=z='min(zoom+0.00022,1.025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=25"
+    # Alternating slow push-in / pull-out with gentle horizontal drift.
+    zoom_expr = "min(zoom+0.00075,1.09)" if int(audio_start * 10) % 2 == 0 else "max(zoom-0.00075,1.0)"
+    zoom = "zoompan=z='" + zoom_expr + "':x='iw/2-(iw/zoom/2)+10*sin(on/42)':y='ih/2-(ih/zoom/2)+8*cos(on/49)':d=1:s=1080x1920:fps=30"
     args = [
         "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
         "-t", str(max(0.6, duration)),
         "-vf", zoom + ",scale=1080:1920:flags=lanczos,setsar=1,format=yuv420p",
-        "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)
+        "-r", "30", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)
     ]
     result = run_command(args, timeout=300)
     if result.returncode != 0 or not output.exists():
