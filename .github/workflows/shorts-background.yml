@@ -40,4 +40,9 @@ jobs:
           CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
           ASR_MODEL_SIZE: base
           CPU_THREADS: "2"
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          FLICKR_API_KEY: ${{ secrets.FLICKR_API_KEY }}
+          EUROPEANA_API_KEY: ${{ secrets.EUROPEANA_API_KEY }}
         run: python Content-factory/voice-engine/cloud_worker.py --job-id "$JOB_ID"
