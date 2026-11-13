@@ -437,7 +437,8 @@ async function renderLocally(){
  const ownImages=await loadOwnImages(state.visualFiles||[]);
  setProgress(15);setText("#renderStatus",timeline.length+" cümle/ifade sahnesi için farklı açık görsel kaynaklarında konuya uygun görseller aranıyor…");
  const found=await searchSceneAssets(timeline,title,ownImages),assets=found.assets;
- const imageCount=found.found;\n  if(found.unique<Math.min(2,timeline.length))throw Error("Yeterli sayıda konuya uygun gerçek stok fotoğrafı bulunamadı ("+found.unique+" farklı görsel). Sahte çizim veya geometrik görsel yerine render durduruldu. Biraz sonra tekrar dene.");
+ const imageCount=found.found;
+  if(found.unique<Math.min(2,timeline.length))throw Error("Yeterli sayıda konuya uygun gerçek stok fotoğrafı bulunamadı ("+found.unique+" farklı görsel). Sahte çizim veya geometrik görsel yerine render durduruldu. Biraz sonra tekrar dene.");
  setProgress(30);setText("#renderStatus",imageCount+"/"+found.required+" cümle sahnesine görsel bulundu. "+contrastAudit.scenes+" sahne kontrast kontrolünden geçti (en düşük "+contrastAudit.minContrast.toFixed(1)+":1).");
  const quality=$("#localQuality")?.value||"1080",w=quality==="720"?720:1080,h=quality==="720"?1280:1920,fps=24;
  const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.style.cssText="position:fixed;left:-3000px;top:0;width:2px;height:2px;";document.body.append(canvas);
