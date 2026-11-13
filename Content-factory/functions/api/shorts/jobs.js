@@ -1,7 +1,8 @@
 // Cloudflare deployment trigger: ensure Pages picks up the latest main revision.
 const MAX_AUDIO=30*1024*1024,MAX_TEXT=30000,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
-const mediaKey=(key,part)=>key+"/"+part;\nasync function putMedia(bucket,key,file){const buffer=await file.arrayBuffer(),parts=Math.ceil(buffer.byteLength/CHUNK);for(let i=0;i<parts;i++){const start=i*CHUNK,end=Math.min(start+CHUNK,buffer.byteLength);await bucket.put(mediaKey(key,i),buffer.slice(start,end),{httpMetadata:{contentType:file.type||"application/octet-stream"}});}return {key,parts,size:buffer.byteLength};}
+const mediaKey=(key,part)=>key+"/"+part;
+async function putMedia(bucket,key,file){const buffer=await file.arrayBuffer(),parts=Math.ceil(buffer.byteLength/CHUNK);for(let i=0;i<parts;i++){const start=i*CHUNK,end=Math.min(start+CHUNK,buffer.byteLength);await bucket.put(mediaKey(key,i),buffer.slice(start,end),{httpMetadata:{contentType:file.type||"application/octet-stream"}});}return {key,parts,size:buffer.byteLength};}
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
 async function digest(value){return hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))));}
 function safeName(value,fallback){const name=String(value||fallback).split(/[\\/]/).pop().replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100);return name||fallback;}
