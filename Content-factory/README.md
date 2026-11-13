@@ -59,4 +59,11 @@ The Python render engine searches Wikimedia Commons, Openverse and Library of Co
 - If job submission says the background worker cannot start, check the Pages secret `GITHUB_ACTIONS_TOKEN` and repository Actions permission.
 - If workflow starts but reports R2 auth failure, check `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET_NAME`.
 - If iPhone Safari is closed, the GitHub-hosted runner continues. Reopen the site in the same browser profile to resume using the saved job token.
-- If the user does not download and confirm, the scheduled 24-hour expiry cleanup is the fallback.\n\n## 40–45 second photo-review profile\n\n- The cleaned narration is accepted only when its duration is between 40.0 and 45.0 seconds. The system never cuts spoken words or time-stretches speech to force the target.\n- Visual beats use the shared word-aligned planner (`max_words=7`, `max_seconds=2.8`) in both research and render phases so scene IDs and timestamps remain stable.\n- The review screen presents the scene text, time range, photo alternatives, provider, license and source-page link. One photo must be selected for every scene before the render workflow is dispatched.\n- If no verified candidate exists for a scene, research fails closed and asks for a retry; it does not silently substitute an unrelated graphic or generated image.\n
+- If the user does not download and confirm, the scheduled 24-hour expiry cleanup is the fallback.
+
+## 40–45 second photo-review profile
+
+- The cleaned narration is accepted only when its duration is between 40.0 and 45.0 seconds. The system never cuts spoken words or time-stretches speech to force the target.
+- Visual beats use the shared word-aligned planner (`max_words=7`, `max_seconds=2.8`) in both research and render phases so scene IDs and timestamps remain stable.
+- The review screen presents the scene text, time range, photo alternatives, provider, license and source-page link. One photo must be selected for every scene before the render workflow is dispatched.
+- If no verified candidate exists for a scene, research fails closed and asks for a retry; it does not silently substitute an unrelated graphic or generated image.
