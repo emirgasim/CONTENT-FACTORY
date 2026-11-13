@@ -50,7 +50,7 @@ def upload_review_image(job_id,scene,candidate,path):
  return {"parts":parts,"size":size,"key":f"jobs/{job_id}/review/scene-{scene}/candidate-{candidate}"}
 
 def make_text_groups(text):
- words=re.findall(r"\\S+",str(text or ""))
+ words=re.findall(r"\S+",str(text or ""))
  groups=[]
  for i in range(0,len(words),7):
   chunk=" ".join(words[i:i+7]);start=(i//7)*2.8
@@ -61,7 +61,7 @@ def create_silence(path,duration):
  rate=44100
  with wave.open(str(path),"wb") as f:
   f.setnchannels(2);f.setsampwidth(2);f.setframerate(rate)
-  f.writeframes(b"\\0\\0\\0\\0"*int(rate*duration))
+  f.writeframes(b"\0\0\0\0"*int(rate*duration))
  return path
 def make_sentence_groups(rows,duration):
  # Identical word-aligned visual beats are used for research and final render.
