@@ -39,7 +39,7 @@ export async function onRequestGet({ request, env, params }) {
   const kv = env.SHORTS_TEMP;
   const id = String(params.jobId || "");
   const asset = String(params.asset || "");
-  if (!kv || !validId(id)) return json({ error: "Invalid job" }, 404);
+  if (!kv || !media || !validId(id)) return json({ error: "Invalid job" }, 404);
 
   const meta = await kv.get("jobs/" + id + "/input.json", "json");
   if (!meta) return json({ error: "Job expired" }, 404);
@@ -69,7 +69,7 @@ export async function onRequestGet({ request, env, params }) {
   }
 
   if (!item) return json({ error: "Input not found" }, 404);
-  return new Response(streamParts(kv, item.key, item.parts), {
+  return new Response(streamParts(media, item.key, item.parts), {
     headers: {
       "Content-Type": item.type || "application/octet-stream",
       "Content-Length": String(item.size),
@@ -83,7 +83,7 @@ export async function onRequestPut({ request, env, params }) {
   const kv = env.SHORTS_TEMP;
   const id = String(params.jobId || "");
   const asset = String(params.asset || "");
-  if (!kv || !validId(id)) return json({ error: "Invalid job" }, 400);
+  if (!kv || !media || !validId(id)) return json({ error: "Invalid job or R2 binding" }, 400);
 
   if (asset === "manifest") {
     let body;
@@ -119,6 +119,6 @@ export async function onRequestPut({ request, env, params }) {
     ? "jobs/" + id + "/review/scene-" + asset.split("-")[1] + "/candidate-" + asset.split("-")[2] + "/" + part
     : "jobs/" + id + "/output/" + asset.slice(7) + "/" + part;
 
-  await kv.put(key, body, { expirationTtl: TTL_SECONDS });
+  await media.put(key, body, { httpMetadata: { contentType: asset.startsWith("candidate-") ? "image/jpeg" : "application/octet-stream" } });
   return json({ ok: true, part, total, size: body.byteLength });
 }
