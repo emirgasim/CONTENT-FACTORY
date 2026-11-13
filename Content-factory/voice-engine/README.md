@@ -53,7 +53,7 @@ A machine with Docker and enough RAM can run the same folder. Build and run the 
 ## Limitations
 
 - The engine uses Wikimedia Commons still images in this first renderer; video stock footage is not yet searched.
-- Visual layouts are selected from the transcript and include full-screen imagery, split layouts, collages and colorful infographic cards. This is an automated first pass, not editorially perfect AI film direction.
+- The current Shorts composition uses a topic-matched blurred background, hook/title at the top, a large stock image in the centre, and phrase-timed captions in a compact lower strip. Each scene receives a subtle alternating zoom/pan. Scene choice is transcript-driven; this is a deterministic editing agent, not a general-purpose LLM film director.
 - The editing agent uses faster-whisper word timestamps to detect long pauses, preserves short natural pauses, trims long gaps to a short bridge, remaps speech times to the edited WAV, and generates phrase-synchronised ASS captions. Word-level alignment quality still depends on the ASR model and recording quality.
 - The output is 1080×1920, 25 fps, H.264/AAC. Actual duration follows the cleaned voice; the service does not cut spoken words to force a 40–45 second duration.
 - Model weights are downloaded at first run; they are not included in GitHub.
