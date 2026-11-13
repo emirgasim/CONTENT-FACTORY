@@ -25,10 +25,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Confirm worker API configuration
         env:
-          CONTENT_FACTORY_URL: ${{ secrets.CONTENT_FACTORY_URL }}
+          CONTENT_FACTORY_URL: https://content-factory-7s6.pages.dev
           CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
         run: |
-          test -n "$CONTENT_FACTORY_URL" || { echo "::error::CONTENT_FACTORY_URL secret is missing"; exit 1; }
           test -n "$CF_WORKER_SECRET" || { echo "::error::CF_WORKER_SECRET secret is missing"; exit 1; }
           echo "Worker secrets are present. Starting the actual renderer; its first API read will verify the deployed route."
       - uses: actions/setup-python@v5
@@ -54,7 +53,7 @@ jobs:
         env:
           JOB_ID: ${{ inputs.job_id }}
           PHASE: ${{ inputs.phase }}
-          CONTENT_FACTORY_URL: ${{ secrets.CONTENT_FACTORY_URL }}
+          CONTENT_FACTORY_URL: https://content-factory-7s6.pages.dev
           CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
           ASR_MODEL_SIZE: base
           CPU_THREADS: "2"
