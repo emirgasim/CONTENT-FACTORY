@@ -1,3 +1,4 @@
+// Cloudflare deployment trigger: ensure Pages picks up the latest main revision.
 const MAX_AUDIO=30*1024*1024,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
