@@ -118,7 +118,17 @@ def render(job_id,phase='research'):
    path=work/(f"reference-{i+1}{ext}");get_input(job_id,asset,path);user_images.append(path.name)
   job={"job_id":job_id,"status":"queued","progress":4,"message":"Dosyalar alındı; ses ve sahneler analiz ediliyor.","created_at":meta["created_at"],"updated_at":time.time(),"expires_at":meta["expires_at"],"directory":str(work),"source_audio":source.name,"title":meta["title"],"hook":meta.get("hook",""),"text":meta["text"],"user_images":user_images,"error":None}
   with gateway.JOBS_LOCK:gateway.JOBS[job_id]=job
-  if phase=="research":\n   prepare_review(job_id,meta,work,source)\n   return\n  if phase!="render":raise ValueError("Invalid worker phase")\n  selections=request_json("GET",f"{api_base()}/{job_id}/selection")\n  approved=[]\n  for scene in selections.get("scenes",[]):\n   scene_no=int(scene["scene"]);candidate=str(scene["candidate"]);asset=work/(f"approved-{scene_no}-{candidate}.jpg")\n   get_input(job_id,f"candidate-{scene_no}-{candidate}",asset)\n   info=scene.get("metadata",{});info["visual_match_verified"]="true";approved.append((asset,info))\n  original_update=gateway.update_job
+  if phase=="research":
+   prepare_review(job_id,meta,work,source)
+   return
+  if phase!="render":raise ValueError("Invalid worker phase")
+  selections=request_json("GET",f"{api_base()}/{job_id}/selection")
+  approved=[]
+  for scene in selections.get("scenes",[]):
+   scene_no=int(scene["scene"]);candidate=str(scene["candidate"]);asset=work/(f"approved-{scene_no}-{candidate}.jpg")
+   get_input(job_id,f"candidate-{scene_no}-{candidate}",asset)
+   info=scene.get("metadata",{});info["visual_match_verified"]="true";approved.append((asset,info))
+  original_update=gateway.update_job
   def persistent_update(current_id,**values):
    original_update(current_id,**values)
    with gateway.JOBS_LOCK:snapshot=dict(gateway.JOBS.get(current_id,{}))
