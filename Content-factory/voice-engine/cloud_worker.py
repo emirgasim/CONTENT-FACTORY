@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse,json,os,shutil,sys,tempfile,time
 from pathlib import Path
 import requests
+from requests.exceptions import RequestException
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT))
 import gateway
@@ -9,9 +10,19 @@ CHUNK=16*1024*1024
 def api_base(): return os.environ["CONTENT_FACTORY_URL"].rstrip("/")+"/api/internal/shorts/jobs"
 def headers(): return {"X-Factory-Worker-Secret":os.environ["CF_WORKER_SECRET"]}
 def request_json(method,url,**kwargs):
- response=requests.request(method,url,headers={**headers(),**kwargs.pop("headers",{})},timeout=180,**kwargs)
- response.raise_for_status()
- return response.json() if response.content else {}
+ last_error=None
+ request_headers={**headers(),**kwargs.pop("headers",{})}
+ for attempt in range(4):
+  try:
+   response=requests.request(method,url,headers=request_headers,timeout=180,**kwargs)
+   response.raise_for_status()
+   return response.json() if response.content else {}
+  except RequestException as exc:
+   last_error=exc
+   status=getattr(getattr(exc,"response",None),"status_code",None)
+   if status not in (408,425,429,500,502,503,504) or attempt==3:raise
+   time.sleep(1.5*(attempt+1))
+ raise last_error
 def get_input(job_id,asset,destination):
  response=requests.get(f"{api_base()}/{job_id}/{asset}",headers=headers(),stream=True,timeout=(30,180))
  response.raise_for_status()
@@ -26,7 +37,15 @@ def upload_file(job_id,name,path):
    response=requests.put(f"{api_base()}/{job_id}/output-{name}",params={"part":part,"total":parts},headers=headers(),data=chunk,timeout=(30,180))
    response.raise_for_status()
  return {"parts":parts,"size":size}
-def update_status(job_id,**values):request_json("PUT",f"{api_base()}/{job_id}",json=values)
+def update_status(job_id,**values):
+ try:
+  request_json("PUT",f"{api_base()}/{job_id}",json=values)
+  return True
+ except Exception as exc:
+  # Progress telemetry must never terminate a render. Final status is retried
+  # separately after output upload, and the worker logs the original API error.
+  print("[cloud-status] non-fatal status update failure:",type(exc).__name__,str(exc)[:500],flush=True)
+  return False
 def render(job_id):
  if len(job_id)!=32 or any(c not in "0123456789abcdef" for c in job_id):raise ValueError("Invalid job ID")
  meta=request_json("GET",f"{api_base()}/{job_id}")
@@ -58,7 +77,8 @@ def render(job_id):
      cloud_state["status"]="processing"
     if cloud_state.get("status")=="completed":
      cloud_state.update({"status":"uploading","progress":96,"message":"MP4 ve kaynak dosyaları geçici depolamaya aktarılıyor."})
-    update_status(job_id,**cloud_state)
+    if not update_status(job_id,**cloud_state):
+     print("[cloud-status] render continues despite progress API failure",flush=True)
   gateway.update_job=persistent_update
   try:gateway.render_short_job(job_id)
   finally:gateway.update_job=original_update
@@ -71,7 +91,9 @@ def render(job_id):
    if not path.is_file():raise RuntimeError("Render çıktısı bulunamadı: "+local)
    manifest[name]=upload_file(job_id,name,path)
   request_json("PUT",f"{api_base()}/{job_id}/manifest",json={"type":"manifest","manifest":manifest})
-  update_status(job_id,status="completed",progress=100,message="MP4 hazır. iPhone'una indir; ardından projeyi silebilirsin.",duration=round(float(result.get("duration",0)),2),removed_silence=round(float(result.get("removed_silence",0)),2),edit_cut_count=int(result.get("edit_cut_count",0)),scene_count=int(result.get("scene_count",0)),source_count=int(result.get("source_count",0)),caption_count=int(result.get("caption_count",0)),qc_duration_delta=float(result.get("qc_duration_delta",0)),edit_strategy=str(result.get("edit_strategy","unknown")),video_bytes=manifest["video"]["size"])
+  final_status=update_status(job_id,status="completed",progress=100,message="MP4 hazır. iPhone'una indir; ardından projeyi silebilirsin.",duration=round(float(result.get("duration",0)),2),removed_silence=round(float(result.get("removed_silence",0)),2),edit_cut_count=int(result.get("edit_cut_count",0)),scene_count=int(result.get("scene_count",0)),source_count=int(result.get("source_count",0)),caption_count=int(result.get("caption_count",0)),qc_duration_delta=float(result.get("qc_duration_delta",0)),edit_strategy=str(result.get("edit_strategy","unknown")),video_bytes=manifest["video"]["size"])
+  if not final_status:
+   raise RuntimeError("Video üretildi ve dosyalar yüklendi ancak tamamlandı durumu Cloudflare'a kaydedilemedi. Son durum kaydı başarısız.")
  except Exception as exc:
   try:update_status(job_id,status="failed",progress=100,message="Bulut render başarısız.",error=str(exc)[:1800])
   except Exception:pass
