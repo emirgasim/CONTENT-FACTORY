@@ -142,7 +142,7 @@ async function deleteCloudProject(options={}){
    $("#deleteCloudProject").classList.add("hidden");$("#deleteCloudProject").textContent="İndirdim, projeyi sil";
    $("#recordStatus").textContent="Geçici proje dosyaları silindi. Yeni Shorts için ses veya metin ekleyebilirsin.";
    $("#startRender").disabled=true;$("#startRender").textContent="Bulutta Shorts üret";
-  }catch(error){setStatus("#renderStatus","Silme işlemi tamamlanamadı: "+error.message);button.disabled=false;button.textContent="Bulut dosyalarını yeniden sil";}
+  }catch(error){button.classList.remove("hidden");setStatus("#renderStatus","Silme işlemi tamamlanamadı: "+error.message);button.disabled=false;button.textContent="Bulut dosyalarını yeniden sil";}
  }
 $("#settingsToggle").onclick=()=>$("#engineSettings").classList.toggle("hidden");
 // The iPhone is only a control panel; rendering runs in the GitHub Actions cloud worker.
