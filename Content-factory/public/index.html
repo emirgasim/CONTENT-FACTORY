@@ -6,9 +6,9 @@
 <body><div class="shell">
 <header class="topbar"><div class="brand"><span class="brand-mark">✳</span><div><b>CONTENT FACTORY</b><small>CREATIVE VIDEO WORKSPACE</small></div></div><div class="top-actions"><span class="status"><i></i> ONE SHORT STUDIO</span><button id="settingsToggle" class="btn btn-ghost">Bulut sistemi</button></div></header>
 <main>
-<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Yalnızca kancanı ve ses dosyanı gönder. Ses otomatik çözümlenir; Shorts bulutta hazırlanır.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
+<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>40–45 saniyelik seslendirmeyi gönder. Sistem her 2–3 saniyelik anlatım parçası için gerçek fotoğraflar bulur; sen onayladıktan sonra Shorts bulutta hazırlanır.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
 
-<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses, metin ve görseller iPhone dışındaki geçici render işçisine gönderilir. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
+<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses ve onayladığın gerçek fotoğraflar iPhone dışındaki geçici render işçisine gönderilir. Temizlenmiş ses 40–45 saniye olmalıdır. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
 
 <section id="agentHub" class="panel agent-hub">
 <div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div></div>
@@ -41,7 +41,7 @@
 </div>
 <div class="panel">
 <div class="step-label"><span>02</span><div><div class="eyebrow">AUDIO INPUT</div><h3>Ses kaynağını seç</h3></div></div>
-<p class="muted">Sesini burada kaydedebilir veya daha önce hazırladığın ses dosyasını yükleyebilirsin. İkisinden yalnızca birini seçmen yeterli.</p>
+<p class="muted">40–45 saniyelik seslendirmeyi burada kaydedebilir veya daha önce hazırladığın ses dosyasını yükleyebilirsin. Görsel araştırması başlamadan önce süre kontrol edilir.</p>
 <div class="record-console"><div class="record-indicator" id="recordIndicator"><span></span><b id="recordState">Kayıt hazır</b><strong id="recordTimer">00:00</strong></div><div class="record-actions"><button id="startRecording" class="btn btn-primary">● Mikrofonla kaydet</button><button id="stopRecording" class="btn btn-dark" disabled>Kaydı bitir</button><button id="redoRecording" class="btn btn-ghost hidden" disabled>Yeniden kaydet</button></div></div>
 <div id="recordStatus" class="media-info">Mikrofon izni istendiğinde izin ver. Hazır ses dosyası yüklemek için aşağıdaki Dosyayı Seç alanını kullan.</div>
 <audio id="referencePreview" controls class="audio-preview hidden"></audio><div class="upload-audio"><label class="field-label" for="audioFile">VEYA HAZIR SES DOSYASI YÜKLE</label><input id="audioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.mp4,.mpeg,.mpga,.ogg,.opus,.webm"><span class="muted">MP3, M4A, WAV veya desteklenen ses dosyası · En fazla 30 MB</span></div>
