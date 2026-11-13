@@ -690,23 +690,9 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         od.rectangle((0, 0, width, 140), fill=(10, 12, 20, 60))
         canvas.paste(Image.alpha_composite(canvas.crop((0, 405, width, 1305)).convert("RGBA"), overlay).convert("RGB"), (0, 405))
     else:
-        # A designed fallback is used only when no reusable stock image can be fetched.
-        draw.rectangle((0, 405, width, 1305), fill=accent_alt)
-        for radius, x, y in [(350, 250, 760), (250, 820, 980), (180, 550, 590)]:
-            draw.ellipse((x-radius, y-radius, x+radius, y+radius), outline="#FFFFFF", width=14)
-        draw.line((80, 1190, 1000, 500), fill="#FFFFFF", width=18)
+        raise RuntimeError("Bu sahne için gerçek stok görsel bulunamadı; yapay geometrik şekillerle video oluşturulmayacak.")
 
-    # Compact editorial title band.
-    draw.rectangle((0, 0, width, 205), fill=accent)
-    title_font = load_font(58)
-    title_text = compact_scene_caption(title, max_words=6, max_chars=34)
-    title_lines = wrap_lines(draw, title_text, title_font, 950)[:2]
-    y = 38 if len(title_lines) == 1 else 22
-    for line in title_lines:
-        draw.text((55, y), line, font=title_font, fill=ink)
-        y += 66
-
-    # Hook: one slim, white rounded window, slightly below the top edge.
+    # No generic Content Factory heading is printed into the video.\n\n    # Hook: one slim, white rounded window, slightly below the top edge.
     if hook:
         draw_rounded_compat(draw, (55, 242, 1025, 380), radius=28, fill="#FFFFFF")
         hook_font = load_font(43)
@@ -832,8 +818,8 @@ def render_short_job(job_id: str) -> None:
             scene_assets.append(chosen)
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
             update_job(job_id, progress=progress, message="Lisanslı stok görseller eşleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
-        if not stock_pool and not user_images:
-            update_job(job_id, progress=66, message="Uygun stok görsel bulunamadı; sahneler dinamik grafiklerle hazırlanıyor.")
+        if not stock_pool:
+            raise RuntimeError("Konuya uygun lisanslı gerçek stok fotoğrafı bulunamadı. Geometrik/piksel çizim yerine render durduruldu.")
 
         clips = []
         total_duration = sum(max(0.7, float(g["end"]) - float(g["start"])) for g in groups)
