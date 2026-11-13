@@ -10,10 +10,10 @@ export async function onRequestPost({request,env}){
  if(!kv)return json({error:"Ücretsiz geçici depolama bağlantısı eksik. Cloudflare Pages ayarlarında SHORTS_TEMP KV binding oluşturulmalı."},503);
  if(!env.GITHUB_ACTIONS_TOKEN)return json({error:"GitHub bulut işçisi henüz etkinleştirilmedi. Pages secret GITHUB_ACTIONS_TOKEN gerekli."},503);
  let form;try{form=await request.formData();}catch{return json({error:"Gönderilen proje formu okunamadı."},400);}
- const script=String(form.get("text")||"").trim(),title=String(form.get("title")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio");
- if(!script||script.length>5000||!hook||!audio||typeof audio.arrayBuffer!=="function")return json({error:"Başlık, zorunlu kanca, metin ve ses dosyası gerekli."},400);
+ const title=String(form.get("title")||form.get("hook")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio");
+ if(!hook||!audio||typeof audio.arrayBuffer!=="function")return json({error:"Zorunlu kanca ve ses dosyası gerekli."},400);
  if(audio.size<1||audio.size>MAX_AUDIO)return json({error:"Ses dosyası boş veya 30 MB sınırını aşıyor."},413);
- const images=form.getAll("images").filter(x=>x&&typeof x.arrayBuffer==="function"&&x.size>0);
+ const images=[];
  if(images.length>MAX_IMAGES||images.some(x=>x.size>MAX_IMAGE))return json({error:"En fazla 8 referans görsel, her biri en fazla 8 MB olabilir."},413);
  const now=Date.now();
  // No arbitrary per-IP/hourly production quota. Infrastructure/provider limits still apply.
@@ -23,7 +23,7 @@ export async function onRequestPost({request,env}){
   const imageFiles=[];
   for(let i=0;i<images.length;i++){const name=safeName(images[i].name,"reference-"+i+".jpg"),stored=await putFile(kv,prefix+"input/image-"+String(i+1).padStart(2,"0"),images[i]);imageFiles.push({...stored,name,type:images[i].type||"image/jpeg"});}
   const createdAt=new Date(now).toISOString(),expiresAt=new Date(now+TTL_SECONDS*1000).toISOString();
-  const meta={job_id:id,title,hook,text:script,audio:{...audioFile,name:audioName,type:audio.type||"application/octet-stream"},images:imageFiles,created_at:createdAt,expires_at:expiresAt};
+  const meta={job_id:id,title,hook,text:"",audio:{...audioFile,name:audioName,type:audio.type||"application/octet-stream"},images:imageFiles,created_at:createdAt,expires_at:expiresAt};
   await kv.put(prefix+"input.json",JSON.stringify(meta),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"owner.json",JSON.stringify({token_hash:await digest(ownerToken)}),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"status.json",JSON.stringify({job_id:id,status:"queued",progress:1,message:"Bulut render kuyruğuna alındı.",created_at:createdAt,updated_at:createdAt,expires_at:expiresAt}),{expirationTtl:TTL_SECONDS});
