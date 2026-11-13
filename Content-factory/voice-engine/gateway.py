@@ -80,6 +80,19 @@ def probe_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
+def probe_video_dimensions(path: Path) -> tuple[int, int]:
+    result = run_command([
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", str(path)
+    ], timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError("Video çözünürlüğü okunamadı: " + result.stderr[-500:])
+    parts = result.stdout.strip().split("x")
+    if len(parts) != 2:
+        raise RuntimeError("Video çözünürlük bilgisi geçersiz: " + result.stdout[:120])
+    return int(parts[0]), int(parts[1])
+
+
 def update_job(job_id: str, **values: Any) -> None:
     with JOBS_LOCK:
         if job_id in JOBS:
@@ -1370,6 +1383,20 @@ def render_short_job(job_id: str) -> None:
                 message="Sahne görselleri doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
             )
 
+        web_photo_count = sum(
+            1 for assets in scene_assets
+            if assets and assets[0][1].get("source") != "Content Factory"
+            and assets[0][1].get("source") != "User upload"
+        )
+        visual_coverage = web_photo_count / max(1, len(scene_assets))
+        if visual_coverage < 0.65:
+            raise RuntimeError(
+                "Görsel kalite kontrolü başarısız: sahnelerin yalnızca %"
+                + str(round(visual_coverage * 100))
+                + " bölümüne uygun internet fotoğrafı bulundu. Alakasız veya yazı kartlarından oluşan video teslim edilmedi. "
+                  "Arama sağlayıcılarını ve sahne sorgularını kontrol edin."
+            )
+
         clips = []
         for idx, group in enumerate(groups):
             scene_start = float(group.get("start", 0.0))
@@ -1402,7 +1429,7 @@ def render_short_job(job_id: str) -> None:
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(cleaned_audio), "-map", "0:v:0", "-map", "1:a:0",
             "-t", str(duration), "-vf", subtitle_video_filter,
-            "-r", "25", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-r", "25", "-s:v", "1080x1920", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-threads", os.getenv("FFMPEG_THREADS", "2"),
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart", str(output_video)
@@ -1411,6 +1438,13 @@ def render_short_job(job_id: str) -> None:
             raise RuntimeError("Altyazılı MP4 birleştirme başarısız: " + final_result.stderr[-1600:])
 
         rendered_duration = probe_duration(output_video)
+        output_width, output_height = probe_video_dimensions(output_video)
+        if (output_width != 1080 or output_height != 1920):
+            raise RuntimeError(
+                "Çözünürlük kalite kontrolü başarısız: "
+                + str(output_width) + "x" + str(output_height)
+                + ". Beklenen: 1080x1920."
+            )
         duration_delta = abs(rendered_duration - duration)
         if duration_delta > 0.60:
             raise RuntimeError(
