@@ -1228,9 +1228,9 @@ def render_short_job(job_id: str) -> None:
             # Do not launch a fresh network search for every sentence: that made
             # 20+ scene videos slow and brittle when public APIs were unavailable.
             if downloaded_assets:
-                scene_query_en = translate_visual_query(scene_query or scene_terms)
-                topic_query_en = translate_visual_query(topic_anchor)
-                scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_query_en or scene_terms or "").lower()))
+                scene_query_en = scene_query or scene_terms
+                topic_query_en = topic_anchor
+                scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_query_en or "").lower()))
                 ranked_pool = sorted(
                     downloaded_assets,
                     key=lambda pair: (
