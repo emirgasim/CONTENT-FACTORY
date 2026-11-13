@@ -15,10 +15,8 @@ export async function onRequestPost({request,env}){
  if(audio.size<1||audio.size>MAX_AUDIO)return json({error:"Ses dosyası boş veya 30 MB sınırını aşıyor."},413);
  const images=form.getAll("images").filter(x=>x&&typeof x.arrayBuffer==="function"&&x.size>0);
  if(images.length>MAX_IMAGES||images.some(x=>x.size>MAX_IMAGE))return json({error:"En fazla 8 referans görsel, her biri en fazla 8 MB olabilir."},413);
- const ip=request.headers.get("CF-Connecting-IP")||"unknown",ipKey="limits/"+(await digest(ip)),now=Date.now();
- const old=await kv.get(ipKey,"json");let limit=old||{start:now,count:0};
- if(now-Number(limit.start)>3600000)limit={start:now,count:0};
- if(limit.count>=4)return json({error:"Bu bağlantıdan saatlik 4 üretim sınırına ulaşıldı. Biraz sonra tekrar dene."},429);
+ const now=Date.now();
+ // No arbitrary per-IP/hourly production quota. Infrastructure/provider limits still apply.
  const id=crypto.randomUUID().replace(/-/g,""),ownerToken=hex(crypto.getRandomValues(new Uint8Array(32))),prefix="jobs/"+id+"/";
  try{
   const audioName=safeName(audio.name,"narration.m4a"),audioFile=await putFile(kv,prefix+"input/audio",audio);
@@ -29,7 +27,6 @@ export async function onRequestPost({request,env}){
   await kv.put(prefix+"input.json",JSON.stringify(meta),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"owner.json",JSON.stringify({token_hash:await digest(ownerToken)}),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"status.json",JSON.stringify({job_id:id,status:"queued",progress:1,message:"Bulut render kuyruğuna alındı.",created_at:createdAt,updated_at:createdAt,expires_at:expiresAt}),{expirationTtl:TTL_SECONDS});
-  limit.count++;await kv.put(ipKey,JSON.stringify(limit),{expirationTtl:3600});
   const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id}})});
   if(gh.status!==204){
    let details="";
