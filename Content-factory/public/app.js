@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);
-const state={reference:null,referenceUrl:null,videoUrl:null,audioUrl:null,creditsUrl:null,jobId:null,jobToken:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
+const state={reference:null,referenceUrl:null,videoUrl:null,videoBlob:null,audioUrl:null,creditsUrl:null,jobId:null,jobToken:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
 window.cfState=state;
 const DB_NAME="content-factory-local",STORE="voice-profile";
 function engineUrl(){return ($("#engineUrl").value||localStorage.getItem("cf-engine-url")||"").trim().replace(/\/+$/,"")}
@@ -12,12 +12,12 @@ async function putVoice(blob,name,type){const db=await openDb();return new Promi
 async function getVoice(){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,"readonly"),req=tx.objectStore(STORE).get("reference");req.onsuccess=()=>{db.close();const x=req.result;resolve(x?new File([x.blob],x.name,{type:x.type||"audio/wav"}):null)};req.onerror=()=>{db.close();reject(req.error)}})}
 async function deleteVoice(){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,"readwrite");tx.objectStore(STORE).delete("reference");tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}})}
 function revoke(url){if(url)URL.revokeObjectURL(url)}
-function resetResult(){revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);state.videoUrl=null;state.audioUrl=null;state.creditsUrl=null;state.jobId=null;state.jobToken=null;$("#renderPanel").classList.add("hidden");$("#renderResult").classList.add("hidden");$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim();$("#startRender").textContent="Bulutta Shorts üret";setProgress(0)}
+function resetResult(){revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);state.videoUrl=null;state.videoBlob=null;state.audioUrl=null;state.creditsUrl=null;state.jobId=null;state.jobToken=null;localStorage.removeItem("cf-cloud-job-id");localStorage.removeItem("cf-cloud-job-token");$("#finalVideo").removeAttribute("src");$("#finalVideo").load();$("#renderPanel").classList.add("hidden");$("#renderResult").classList.add("hidden");$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim();$("#startRender").textContent="Bulutta Shorts üret";setProgress(0)}
 function openShorts(){resetResult();$("#editor").classList.remove("hidden");$("#editor").scrollIntoView({behavior:"smooth"})}
 function saveEngine(){localStorage.setItem("cf-engine-url",$("#engineUrl").value.trim());localStorage.setItem("cf-engine-token",$("#engineToken").value.trim());setStatus("#engineStatus","Motor bağlantı ayarları kaydedildi.")}
 async function checkEngine(){const base=engineUrl();if(!base){setStatus("#engineStatus","Önce servis adresini gir.");return}setStatus("#engineStatus","Bağlantı kontrol ediliyor…");try{const r=await fetch(base+"/health",{headers:headers()});const j=await r.json();if(!r.ok)throw Error(j.detail||j.error||r.status);if(j.video_renderer!==true)throw Error("Servise ulaşıldı ancak FFmpeg video motoru çalışmıyor.");setStatus("#engineStatus","Bağlantı başarılı · MP4 motoru hazır.")}catch(e){setStatus("#engineStatus","Bağlantı kurulamadı: "+e.message)}}
 function loadReference(){const ok=!!state.reference;const scriptReady=!!$("#scriptText").value.trim();$("#recordStatus").textContent=!ok?"Henüz mikrofon kaydı veya ses dosyası seçilmedi.":scriptReady?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";$("#startRender").disabled=!ok||!scriptReady||!$("#hookText").value.trim()}
-function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
+async function downloadBlob(blob,name){if(!blob||!blob.size)throw Error("MP4 dosyası hazır değil. Videoyu yeniden oluştur.");const file=new File([blob],name,{type:blob.type||"video/mp4"});if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:name});return "share"}const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.rel="noopener";a.style.display="none";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),300000);return "download"}
 async function fetchBlob(path){const r=await fetch(engineUrl()+path,{headers:headers()});if(!r.ok){let message="Dosya indirilemedi ("+r.status+")";try{const j=await r.json();message=j.detail||j.error||message}catch{}throw Error(message)}return await r.blob()}
 async function approveAndRender(){
  const text=$("#scriptText").value.trim(),title=$("#topicTitle").value.trim()||"Content Factory Shorts",hook=$("#hookText").value.trim(),button=$("#startRender");
@@ -56,7 +56,7 @@ async function pollCloudJob(id,title){
    async function output(name){const r=await fetch("/api/shorts/jobs/"+encodeURIComponent(id)+"/"+name,{headers});if(!r.ok){let msg="Çıktı indirilemedi ("+r.status+").";try{msg=(await r.json()).error||msg}catch{}throw Error(msg)}return r.blob()}
    const [video,audio,credits]=await Promise.all([output("video"),output("audio"),output("credits")]);
    revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
-   state.videoUrl=URL.createObjectURL(video);state.audioUrl=URL.createObjectURL(audio);state.creditsUrl=URL.createObjectURL(credits);
+   state.videoBlob=video;state.videoUrl=URL.createObjectURL(video);state.audioUrl=URL.createObjectURL(audio);state.creditsUrl=URL.createObjectURL(credits);
    $("#finalVideo").src=state.videoUrl;
    $("#renderStats").textContent="Süre: "+Number(job.duration||0).toFixed(1)+" sn · Sessizlik azaltıldı: "+Number(job.removed_silence||0).toFixed(1)+" sn · Görsel sahne: "+(job.scene_count||0)+" · Bulutta render edildi";
    $("#renderCleanupStatus").textContent="Geçici proje, indirme onayından sonra hemen silinir. Onay gelmezse 24 saat içinde otomatik temizlenir.";
@@ -85,7 +85,7 @@ async function deleteCloudProject(){
   const response=await fetch("/api/shorts/jobs/"+encodeURIComponent(state.jobId),{method:"DELETE",headers:{"X-Job-Token":state.jobToken}});
   const data=await response.json();if(!response.ok)throw Error(data.error||"Silme başarısız.");
   revoke(state.videoUrl);revoke(state.audioUrl);revoke(state.creditsUrl);
-  state.videoUrl=state.audioUrl=state.creditsUrl=null;state.jobId=state.jobToken=null;
+  state.videoUrl=state.videoBlob=state.audioUrl=state.creditsUrl=null;state.jobId=state.jobToken=null;
   localStorage.removeItem("cf-cloud-job-id");localStorage.removeItem("cf-cloud-job-token");
   try{await deleteVoice()}catch{}
   state.reference=null;
@@ -105,7 +105,7 @@ $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 $("#hookText").oninput=()=>{$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim()};$("#scriptText").oninput=()=>{const n=$("#scriptText").value.length;$("#scriptCount").textContent=n+" karakter · cümleye göre sahne";$("#startRender").disabled=!state.reference||!$("#scriptText").value.trim()||!$("#hookText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#scriptText").value.trim()?"Ses ve metin hazır. Videoyu oluşturmaya başlayabilirsin.":"Ses hazır. Önce 01 bölümüne seslendirme metnini ekle.";};
 $("#clearScript").onclick=()=>{$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult()};
 $("#startRender").onclick=approveAndRender;$("#deleteCloudProject").onclick=deleteCloudProject;
-$("#downloadVideo").onclick=()=>{downloadBlob(state.videoUrl,($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4");$("#deleteCloudProject").classList.remove("hidden");$("#renderCleanupStatus").textContent="İndirme başlatıldı. Dosyanın iPhone Dosyalar uygulamasına kaydedildiğini kontrol ettikten sonra proje temizliğini onayla.";};
+$("#downloadVideo").onclick=async()=>{const button=$("#downloadVideo");button.disabled=true;try{const name=($("#topicTitle").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4";const method=await downloadBlob(state.videoBlob,name);$("#deleteCloudProject").classList.remove("hidden");$("#renderCleanupStatus").textContent=method==="share"?"Paylaşım menüsü açıldı. Buradan Dosyalara Kaydet'i seç; kayıt tamamlanınca projeyi silebilirsin.":"İndirme başlatıldı. Dosyalar uygulamasında MP4'ün kaydedildiğini kontrol et; ardından projeyi silebilirsin.";}catch(error){if(error.name!=="AbortError")setStatus("#renderCleanupStatus","MP4 aktarılamadı: "+error.message+" · Yeniden dene.");}finally{button.disabled=false;}};
 $("#downloadCleanAudio").onclick=()=>downloadBlob(state.audioUrl,"shorts-cleaned-voice.wav");
 $("#downloadCredits").onclick=()=>downloadBlob(state.creditsUrl,"sources-and-licenses.txt");
 $("#nextTopic").onclick=()=>{$("#topicTitle").value="";$("#hookText").value="";$("#scriptText").value="";$("#scriptCount").textContent="0 karakter · cümleye göre sahne";resetResult();$("#renderPanel").classList.add("hidden");$("#editor").scrollIntoView({behavior:"smooth"});};
