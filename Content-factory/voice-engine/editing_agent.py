@@ -65,7 +65,7 @@ def build_edit_plan(
         gap = right["start"] - left["end"]
         if gap <= 0:
             continue
-        sentence_break = bool(re.search(r"[.!?…][\"'’”)}\]]?$", left["text"]))
+        sentence_break = any(left["text"].endswith(mark) for mark in (".", "!", "?", "…"))
         threshold = min_sentence_gap if sentence_break else min_phrase_gap
         kept_gap = sentence_keep if sentence_break else phrase_keep
         if gap <= threshold or gap <= kept_gap + 0.04:
@@ -240,7 +240,7 @@ def build_visual_beats(
                 chunks.append(current)
                 current = []
         current.append(word)
-        if re.search(r"[.!?…][\"'’”)}\]]?$", word["text"]):
+        if any(word["text"].endswith(mark) for mark in (".", "!", "?", "…")):
             chunks.append(current)
             current = []
     if current:
