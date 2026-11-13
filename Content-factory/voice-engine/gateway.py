@@ -927,7 +927,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
         raise RuntimeError("Bu sahne için doğrulanmış görsel bulunamadı.")
     try:
         with Image.open(assets[0][0]) as source:
-            photo = cover_image(source, (944, 790))
+            photo = cover_image(source, (944, 1160))
             dynamic_background = cover_image(source, (width, height)).filter(ImageFilter.GaussianBlur(34))
         dark_backdrop = Image.new("RGB", (width, height), background)
         canvas = Image.blend(dynamic_background, dark_backdrop, 0.78)
@@ -950,15 +950,15 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
             y += 52
 
     # The photo is contained rather than filling the entire screen.
-    image_box = (68, 250, 1012, 1040)
+    image_box = (68, 300, 1012, 1460)
     canvas.paste(photo, (image_box[0], image_box[1]))
     draw = ImageDraw.Draw(canvas)
     draw_rounded_compat(draw, image_box, radius=26, outline="#344052", width=3)
 
     # The caption panel begins immediately below the image: no empty black footer.
-    panel_box = (68, 1044, 1012, 1810)
+    panel_box = (68, 1480, 1012, 1810)
     draw_rounded_compat(draw, panel_box, radius=28, fill=panel, outline="#293648", width=2)
-    draw.rounded_rectangle((108, 1120, 118, 1730), radius=5, fill=accent)
+    draw.rounded_rectangle((108, 1540, 118, 1760), radius=5, fill=accent)
 
     # The lower-third is intentionally left open for word-timed ASS captions.
     # Captions are rendered after the clips are concatenated, so their timing follows
