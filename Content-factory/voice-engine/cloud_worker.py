@@ -61,25 +61,45 @@ def prepare_review(job_id,meta,work,source):
  for index,group in enumerate(groups):
   scene_text=str(group.get("text","")).strip()
   context=" ".join(str(x.get("text","")) for x in groups[max(0,index-1):index+2])
-  brief=("Story topic: "+str(meta.get("title",""))+". Exact narrated scene: "+scene_text+". Context: "+context)[:420]
+  # Keep the visual target short and entity-focused: CLIP has a 77-token
+  # text window, so long narration/context prompts can truncate the actual subject.
+  visual_target=gateway.english_visual_query(scene_text)
+  visual_target=re.sub(r"\\bsilvestre\\b","Sylvester",visual_target,flags=re.I)
+  visual_target=re.sub(r"\\bsylvester\\b(?!\\s+stallone)","Sylvester Stallone",visual_target,flags=re.I)
+  lower_scene=scene_text.casefold()
+  if "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
+   visual_target="Sylvester Stallone arriving; Sylvester Stallone, Rocky actor"
+  if not visual_target:
+   visual_target=gateway.translate_visual_query(scene_text)[:180]
+  brief=("Narrated scene: "+scene_text+". Nearby context: "+context)[:420]
   queries=[]
-  for q in (gateway.translate_visual_query(str(meta.get("title",""))+" "+scene_text),gateway.translate_visual_query(scene_text),gateway.extract_keywords(str(meta.get("title",""))+" "+scene_text)):
+  query_candidates=[
+   visual_target,
+   gateway.translate_visual_query(scene_text),
+   gateway.translate_visual_query(str(meta.get("title",""))+" "+scene_text),
+   gateway.extract_keywords(str(meta.get("title",""))+" "+scene_text),
+  ]
+  if "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
+   query_candidates.extend(["Sylvester Stallone arriving","Sylvester Stallone Rocky actor photograph","Sylvester Stallone candid photo"])
+  for q in query_candidates:
    q=" ".join(str(q or "").split())
    if q and q.lower() not in [x.lower() for x in queries]:queries.append(q[:180])
   pairs=[];seen=set()
-  for q in queries[:3]:
+  # More focused query variants and a larger candidate pool prevent a single
+  # weak translation/search response from failing an otherwise valid scene.
+  for q in queries[:6]:
    candidates=query_cache.get(q)
    if candidates is None:
-    candidates=gateway.search_public_assets(q,limit=20);query_cache[q]=candidates
-   for candidate in candidates[:12]:
+    candidates=gateway.search_public_assets(q,limit=24);query_cache[q]=candidates
+   for candidate in candidates[:16]:
     url=str(candidate.get("url","")).strip()
     if not url or url in seen:continue
     seen.add(url)
-    path=gateway.download_image_asset(candidate,work,1000+index*30+len(pairs))
+    path=gateway.download_image_asset(candidate,work,1000+index*100+len(pairs))
     if path:pairs.append((path,candidate))
-    if len(pairs)>=12:break
-   if len(pairs)>=12:break
-  ranked=gateway.rank_scene_images(brief,pairs)
+    if len(pairs)>=36:break
+   if len(pairs)>=36:break
+  ranked=gateway.rank_scene_images(visual_target,pairs)
   options=[]
   for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
    # CLIP ranker tags only verified visual matches.
