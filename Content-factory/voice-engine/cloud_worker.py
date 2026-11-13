@@ -120,7 +120,11 @@ def render_approved_timeline(job_id,meta,work,source,selections):
   rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
   duration=gateway.probe_duration(cleaned)
   groups=make_sentence_groups(rows,duration)
- if not groups:raise RuntimeError("Ses için cümle tabanlı sahne zaman çizelgesi oluşturulamadı.")
+ if not groups and meta.get("input_mode")!="text":
+  transcript=" ".join(re.sub(r"\\s+"," ",str(row.get("text","")).strip()) for row in rows if str(row.get("text","")).strip()).strip()
+  if transcript and duration>0:
+   groups=[{"index":1,"start":0.0,"end":round(float(duration),3),"duration":round(float(duration),3),"text":transcript}]
+ if not groups:raise RuntimeError("Sahne zaman çizelgesi oluşturulamadı; giriş metni veya ses çözümlemesi boş.")
  by_index={int(g["index"]):g for g in groups}
  items=selections.get("scenes") or []
  items=sorted(items,key=lambda x:int(x.get("order",0) or 0))
@@ -241,7 +245,17 @@ def prepare_review(job_id,meta,work,source=None):
   rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
   duration=gateway.probe_duration(cleaned)
   groups=make_sentence_groups(rows,duration)
- if not groups:raise RuntimeError("Ses için sahne zaman çizelgesi oluşturulamadı.")
+ if not groups:
+  # Last-resort recovery: never discard a valid transcript because word timings
+  # were clipped/remapped outside the cleaned audio duration.
+  recovered=[]
+  for row in rows or []:
+   value=re.sub(r"\\s+"," ",str(row.get("text","")).strip())
+   if value:recovered.append(value)
+  transcript=" ".join(recovered).strip()
+  if transcript and duration>0:
+   groups=[{"index":1,"start":0.0,"end":round(float(duration),3),"duration":round(float(duration),3),"text":transcript}]
+ if not groups:raise RuntimeError("Ses çözümlendi ancak sahne metni üretilemedi. Ses dosyası veya kelime zamanları geçersiz olabilir.")
  manifest={"hook":meta.get("hook",""),"duration":round(duration,2),"scenes":[]}
  query_cache={}
  for index,group in enumerate(groups):
