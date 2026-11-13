@@ -298,43 +298,86 @@ def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
 
 
 def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float | None = None) -> list[dict[str, Any]]:
-    """Split narration into short, readable phrases so the visuals and accent colors keep changing."""
+    """Build a calm caption hierarchy: sentence -> clause -> readable phrase."""
+    minimum_beat = 1.35
+    preferred_beat = max(2.15, min(3.25, float(target_seconds or 2.7)))
+    maximum_beat = 4.0
     groups: list[dict[str, Any]] = []
+
     for row in rows:
         text = re.sub(r"\s+", " ", str(row.get("text", "")).strip())
         start = max(0.0, float(row.get("start", 0.0)))
         end = min(duration, max(start + 0.08, float(row.get("end", start + 0.5))))
         if not text:
             continue
-        sentences = [part.strip() for part in re.split(r"(?<=[.!?;])\s+|(?<=[,])\s+", text) if part.strip()]
+
+        # Preserve sentence and clause boundaries; split only long clauses.
+        clauses = [p.strip() for p in re.split(r"(?<=[.!?;,:])\s+", text) if p.strip()] or [text]
         chunks: list[str] = []
-        for sentence in sentences or [text]:
-            tokens = sentence.split()
-            while len(tokens) > 8:
-                chunks.append(" ".join(tokens[:8]))
-                tokens = tokens[8:]
-            if tokens:
-                chunks.append(" ".join(tokens))
+        for clause in clauses:
+            words = clause.split()
+            current: list[str] = []
+            for word in words:
+                current.append(word)
+                if len(current) >= 7:
+                    chunks.append(" ".join(current))
+                    current = []
+            if current:
+                chunks.append(" ".join(current))
         if not chunks:
-            chunks = [text]
+            continue
+
         weights = [max(1, len(part.split())) for part in chunks]
-        total = sum(weights)
+        total_weight = sum(weights)
+        row_span = max(0.08, end - start)
         cursor = start
-        span = max(0.08, end - start)
         for index, (part, weight) in enumerate(zip(chunks, weights)):
-            part_end = end if index == len(chunks) - 1 else cursor + span * weight / total
+            part_end = end if index == len(chunks) - 1 else cursor + row_span * weight / total_weight
             groups.append({"start": cursor, "end": part_end, "text": part})
             cursor = part_end
+
     if not groups:
         return fallback_segments("", duration)
-    groups[0]["start"] = 0.0
-    groups[-1]["end"] = duration
-    for index, group in enumerate(groups):
-        group["start"] = max(0.0, min(duration, float(group["start"])))
-        group["end"] = max(group["start"] + 0.08, min(duration, float(group["end"])))
-        if index:
-            group["start"] = max(group["start"], groups[index - 1]["end"] - 0.03)
-    return groups
+
+    # Merge tiny beats into a neighbour rather than flashing captions too quickly.
+    merged: list[dict[str, Any]] = []
+    for group in groups:
+        item = {"start": float(group["start"]), "end": float(group["end"]), "text": str(group["text"]).strip()}
+        if merged and (item["start"] - item["end"] < 0.0001):
+            item["start"] = merged[-1]["end"]
+        span = max(0.0, item["end"] - item["start"])
+        if merged and span < minimum_beat:
+            previous = merged[-1]
+            previous_span = previous["end"] - previous["start"]
+            if previous_span + span <= maximum_beat:
+                previous["end"] = item["end"]
+                previous["text"] = (previous["text"] + " " + item["text"]).strip()
+                continue
+        merged.append(item)
+
+    # Re-time phrase beats smoothly over the real narration duration. Word count
+    # influences pacing, while a soft floor prevents abrupt sub-second flashes.
+    if len(merged) > 1:
+        weights = [max(1.0, len(g["text"].split()) ** 0.82) for g in merged]
+        raw = [max(0.08, g["end"] - g["start"]) for g in merged]
+        weights = [0.65 * w + 0.35 * (span / max(0.01, duration) * sum(weights)) for w, span in zip(weights, raw)]
+        total = sum(weights)
+        cursor = 0.0
+        for index, group in enumerate(merged):
+            group["start"] = cursor
+            cursor = duration if index == len(merged) - 1 else cursor + duration * weights[index] / total
+            group["end"] = cursor
+    else:
+        merged[0]["start"], merged[0]["end"] = 0.0, duration
+
+    # Keep the final timeline contiguous and guarantee readable holds.
+    for index, group in enumerate(merged):
+        group["start"] = 0.0 if index == 0 else merged[index - 1]["end"]
+        group["end"] = duration if index == len(merged) - 1 else max(group["start"] + minimum_beat, min(duration, group["end"]))
+    if len(merged) > 1 and merged[-1]["end"] - merged[-1]["start"] < minimum_beat:
+        merged[-2]["end"] = duration
+        merged.pop()
+    return merged
 
 def plain_text(value: Any) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
@@ -878,13 +921,13 @@ def render_short_job(job_id: str) -> None:
             raise RuntimeError("Konuya uygun lisanslı gerçek stok fotoğrafı bulunamadı. Geometrik/piksel çizim yerine render durduruldu.")
 
         clips = []
-        total_duration = sum(max(0.7, float(g["end"]) - float(g["start"])) for g in groups)
+        total_duration = duration
         cursor = 0.0
         for idx, group in enumerate(groups):
             start = cursor
-            scene_duration = max(0.7, float(group["end"]) - float(group["start"]))
+            scene_duration = max(0.08, float(group["end"]) - float(group["start"]))
             if idx == len(groups) - 1:
-                scene_duration = max(0.7, duration - cursor)
+                scene_duration = max(0.08, duration - cursor)
             cursor += scene_duration
             canvas_path = work_dir / ("scene-" + str(idx + 1) + ".jpg")
             clip_path = work_dir / ("clip-" + str(idx + 1) + ".mp4")
