@@ -22,7 +22,14 @@ import requests
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+from editing_agent import (
+    build_edit_plan,
+    build_visual_beats,
+    remap_rows_to_edited_timeline,
+    render_edited_audio,
+    write_ass_subtitles,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 TTS_INTERNAL_URL = os.getenv("TTS_INTERNAL_URL", "http://127.0.0.1:18083").rstrip("/")
@@ -246,12 +253,15 @@ def trim_silence(source: Path, output: Path) -> float:
     return max(0.0, original_duration - cleaned_duration)
 
 def transcribe_audio(audio_path: Path) -> list[dict[str, Any]]:
-    """Transcribe with word timings so long narration is split into short visual beats."""
+    """Transcribe Turkish narration into individual word timings for edit decisions."""
     global ASR_MODEL_INSTANCE
     from faster_whisper import WhisperModel
     with ASR_MODEL_LOCK:
         if ASR_MODEL_INSTANCE is None:
-            ASR_MODEL_INSTANCE = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.getenv("CPU_THREADS", "2"))))
+            ASR_MODEL_INSTANCE = WhisperModel(
+                ASR_MODEL, device="cpu", compute_type="int8",
+                cpu_threads=max(1, int(os.getenv("CPU_THREADS", "2")))
+            )
         model = ASR_MODEL_INSTANCE
     segments, _info = model.transcribe(
         str(audio_path), language="tr", beam_size=1, vad_filter=True,
@@ -265,27 +275,15 @@ def transcribe_audio(audio_path: Path) -> list[dict[str, Any]]:
             if text and float(seg.end) > float(seg.start):
                 rows.append({"start": float(seg.start), "end": float(seg.end), "text": text})
             continue
-        chunk: list[Any] = []
-        chunk_start = float(words[0].start or seg.start)
         for word in words:
             token = str(word.word or "").strip()
             if not token:
                 continue
-            if not chunk:
-                chunk_start = float(word.start if word.start is not None else seg.start)
-            chunk.append(word)
-            chunk_end = float(word.end if word.end is not None else seg.end)
-            phrase = "".join(str(x.word or "") for x in chunk).strip()
-            sentence_end = bool(re.search(r"[.!?…][\"')\]]?$", token))
-            if len(chunk) >= 8 or chunk_end - chunk_start >= 4.2 or sentence_end:
-                if phrase:
-                    rows.append({"start": chunk_start, "end": max(chunk_start + 0.08, chunk_end), "text": phrase})
-                chunk = []
-        if chunk:
-            chunk_end = float(chunk[-1].end if chunk[-1].end is not None else seg.end)
-            phrase = "".join(str(x.word or "") for x in chunk).strip()
-            if phrase:
-                rows.append({"start": chunk_start, "end": max(chunk_start + 0.08, chunk_end), "text": phrase})
+            start = float(word.start if word.start is not None else seg.start)
+            end = float(word.end if word.end is not None else seg.end)
+            if end > start:
+                rows.append({"start": start, "end": end, "text": token})
+    rows.sort(key=lambda item: (float(item["start"]), float(item["end"])))
     return rows
 
 def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
@@ -930,10 +928,13 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     try:
         with Image.open(assets[0][0]) as source:
             photo = cover_image(source, (944, 790))
+            dynamic_background = cover_image(source, (width, height)).filter(ImageFilter.GaussianBlur(34))
+        dark_backdrop = Image.new("RGB", (width, height), background)
+        canvas = Image.blend(dynamic_background, dark_backdrop, 0.78)
+        canvas = ImageEnhance.Color(canvas).enhance(0.72)
     except Exception as exc:
         raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
 
-    canvas = Image.new("RGB", (width, height), background)
     draw = ImageDraw.Draw(canvas)
 
     # Topic title remains subtle; the hook appears only on the opening shot.
@@ -959,20 +960,11 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     draw_rounded_compat(draw, panel_box, radius=28, fill=panel, outline="#293648", width=2)
     draw.rounded_rectangle((108, 1120, 118, 1730), radius=5, fill=accent)
 
-    caption = compact_scene_caption(
-        (group.get("text") or title or "Öne çıkan detay").strip(),
-        max_words=15,
-        max_chars=120,
-    )
-    words = caption.split()
-    caption_font = load_font(60 if len(words) <= 10 else 54)
-    lines = wrap_lines(draw, caption, caption_font, 810)[:4]
-    line_height = int(caption_font.size * 1.22)
-    total_height = len(lines) * line_height
-    y = panel_box[1] + max(58, (panel_box[3] - panel_box[1] - total_height) // 2)
-    for line in lines:
-        draw.text((154, y), line, font=caption_font, fill="#F3F5F8")
-        y += line_height
+    # The lower-third is intentionally left open for word-timed ASS captions.
+    # Captions are rendered after the clips are concatenated, so their timing follows
+    # the edited narration rather than being baked into a still frame.
+    draw.rounded_rectangle((154, 1740, 926, 1748), radius=4, fill="#344052")
+    draw.rounded_rectangle((154, 1740, 310, 1748), radius=4, fill=accent)
 
     canvas.save(output, quality=95)
 
@@ -991,7 +983,8 @@ def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Pa
         raise RuntimeError("Sahne render edilemedi: " + result.stderr[-900:])
 
 def render_short_job(job_id: str) -> None:
-    # Updated 9:16 layout, stock-image matching, short scene captions and pause trimming.
+    # The editing agent owns the narration timeline; every downstream visual and
+    # caption timestamp is remapped to the exact edited WAV timeline.
     with JOBS_LOCK:
         job = JOBS.get(job_id)
         if not job:
@@ -1001,23 +994,73 @@ def render_short_job(job_id: str) -> None:
         title = job["title"]
         hook = job.get("hook", "")
     try:
-        update_job(job_id, status="running", progress=8, message="Onaylanan sesin uzun sessizlikleri temizleniyor…")
         source_audio = work_dir / job.get("source_audio", "approved-preview.wav")
         cleaned_audio = work_dir / "cleaned.wav"
-        removed = trim_silence(source_audio, cleaned_audio)
-        duration = probe_duration(cleaned_audio)
+        source_duration = probe_duration(source_audio)
+        update_job(job_id, status="running", progress=8, message="Ses kelime kelime analiz ediliyor; kurgu kararları hazırlanıyor…")
+
+        edit_report: dict[str, Any]
+        try:
+            original_rows = transcribe_audio(source_audio)
+            if not original_rows:
+                raise RuntimeError("Konuşma zaman kodu üretilemedi.")
+            edit_plan = build_edit_plan(original_rows, source_duration)
+            render_edited_audio(source_audio, cleaned_audio, edit_plan)
+            rows = remap_rows_to_edited_timeline(original_rows, edit_plan)
+            removed = float(edit_plan.get("removed_seconds", 0.0))
+            duration = probe_duration(cleaned_audio)
+            edit_report = edit_plan
+            edit_report["rendered_duration"] = round(duration, 3)
+        except Exception as edit_error:
+            # Safe fallback: preserve the existing silence-removal path if ASR
+            # timestamps or the multi-span FFmpeg render are unavailable.
+            update_job(job_id, progress=18, message="Gelişmiş zaman çizelgesi kullanılamadı; güvenli ses temizleme yedeği devrede…")
+            removed = trim_silence(source_audio, cleaned_audio)
+            duration = probe_duration(cleaned_audio)
+            rows = fallback_segments(script, duration)
+            edit_report = {
+                "version": 1,
+                "strategy": "legacy-silenceremove-fallback",
+                "fallback_reason": str(edit_error)[:500],
+                "source_duration": round(source_duration, 3),
+                "output_duration": round(duration, 3),
+                "removed_seconds": round(removed, 3),
+                "cuts": [],
+                "decisions": [{"type": "fallback", "reason": "word_alignment_or_audio_edit_unavailable"}],
+            }
+
         if duration < 8:
             raise RuntimeError("Ses çok kısa. Lütfen daha uzun bir seslendirme üret.")
-        update_job(job_id, progress=22, message="Türkçe konuşma zaman kodları çıkarılıyor…")
-        try:
-            rows = transcribe_audio(cleaned_audio)
-        except Exception as exc:
+        if not rows:
             rows = fallback_segments(script, duration)
-            update_job(job_id, progress=30, message="Konuşma zaman kodu yedeği kullanılıyor: " + str(exc)[:160])
-        groups = make_scene_groups(rows, duration)
+
+        update_job(job_id, progress=28, message="Cümle ritmi, altyazı ve görsel sahne süreleri hesaplanıyor…")
+        groups = build_visual_beats(rows, duration, max_words=7, max_seconds=2.8)
         if not groups:
             groups = fallback_segments(script, duration)
-        update_job(job_id, progress=38, message="Çok kaynaklı görsel araştırması: stok servisleri, açık arşivler ve web görsel indeksleri taranıyor…")
+
+        # Persist a compact, inspectable edit decision list for diagnostics.
+        (work_dir / "edit-decision-list.json").write_text(
+            json.dumps({
+                **edit_report,
+                "scene_count": len(groups),
+                "caption_count": len(groups),
+                "target_pause_policy": "0.16s after sentence; 0.22s after long intra-phrase pause",
+                "scene_timeline": [
+                    {
+                        "start": round(float(g.get("start", 0.0)), 3),
+                        "end": round(float(g.get("end", 0.0)), 3),
+                        "speech_start": round(float(g.get("speech_start", g.get("start", 0.0))), 3),
+                        "speech_end": round(float(g.get("speech_end", g.get("end", 0.0))), 3),
+                        "text": str(g.get("text", "")),
+                    }
+                    for g in groups
+                ],
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        update_job(job_id, progress=34, message="Her cümle için anlatıma uygun görseller aranıyor…")
         source_records: list[dict[str, str]] = []
         scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
         user_images: list[Path] = []
@@ -1076,51 +1119,73 @@ def render_short_job(job_id: str) -> None:
             if selected is None:
                 raise RuntimeError(
                     "Sahne " + str(idx + 1) + "/" + str(len(groups)) +
-                    " için konuyla ilgili doğrulanmış görsel bulunamadı. Sistem alakasız bir görsel kullanarak videoyu tamamlamayacak."
+                    " için konuyla ilgili doğrulanmış görsel bulunamadı. Sistem alakasız görsel kullanarak videoyu tamamlamayacak."
                 )
 
             scene_assets.append([selected])
-            progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
+            progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
             update_job(
                 job_id,
                 progress=progress,
-                message="Her sahne için alakalı görsel doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
+                message="Sahne görselleri doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
             )
 
         clips = []
-        total_duration = duration
-        cursor = 0.0
         for idx, group in enumerate(groups):
-            start = cursor
-            scene_duration = max(0.08, float(group["end"]) - float(group["start"]))
+            scene_start = float(group.get("start", 0.0))
+            scene_duration = max(0.08, float(group.get("end", scene_start + 0.5)) - scene_start)
             if idx == len(groups) - 1:
-                scene_duration = max(0.08, duration - cursor)
-            cursor += scene_duration
+                scene_duration = max(0.08, duration - scene_start)
             canvas_path = work_dir / ("scene-" + str(idx + 1) + ".jpg")
             clip_path = work_dir / ("clip-" + str(idx + 1) + ".mp4")
             create_visual_canvas(group, scene_assets[idx], idx, canvas_path, title, hook)
-            render_one_scene(canvas_path, scene_duration, clip_path, cleaned_audio, start)
+            render_one_scene(canvas_path, scene_duration, clip_path, cleaned_audio, scene_start)
             clips.append(clip_path)
-            update_job(job_id, progress=70 + int(20 * (idx + 1) / max(1, len(groups))), message="Sahneler birleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
+            update_job(
+                job_id,
+                progress=68 + int(18 * (idx + 1) / max(1, len(groups))),
+                message="Hareketli sahneler hazırlanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
+            )
+
         list_file = work_dir / "clips.txt"
         list_file.write_text("".join("file '" + str(p) + "'\n" for p in clips), encoding="utf-8")
         output_video = work_dir / "shorts.mp4"
-        update_job(job_id, progress=92, message="Ses ve görüntü senkronize edilerek MP4 oluşturuluyor…")
+        subtitle_file = work_dir / "captions.ass"
+        write_ass_subtitles(groups, subtitle_file)
+        subtitle_filter_path = str(subtitle_file).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+        subtitle_video_filter = (
+            "scale=1080:1920:flags=lanczos,setsar=1,subtitles='"
+            + subtitle_filter_path + "'"
+        )
+        update_job(job_id, progress=90, message="Ses, hareketli görüntüler ve zaman kodlu altyazılar birleştiriliyor…")
         final_result = run_command([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(cleaned_audio), "-map", "0:v:0", "-map", "1:a:0",
-            "-t", str(duration), "-vf", "scale=1080:1920:flags=lanczos,setsar=1",
-            "-r", "25", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-threads", os.getenv("FFMPEG_THREADS", "2"),
+            "-t", str(duration), "-vf", subtitle_video_filter,
+            "-r", "25", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-threads", os.getenv("FFMPEG_THREADS", "2"),
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart", str(output_video)
         ], timeout=900)
         if final_result.returncode != 0 or not output_video.exists():
-            raise RuntimeError("MP4 birleştirme başarısız: " + final_result.stderr[-1200:])
+            raise RuntimeError("Altyazılı MP4 birleştirme başarısız: " + final_result.stderr[-1600:])
+
+        rendered_duration = probe_duration(output_video)
+        duration_delta = abs(rendered_duration - duration)
+        if duration_delta > 0.60:
+            raise RuntimeError(
+                "Kurgu kalite kontrolü: görüntü ve ses süresi uyuşmuyor "
+                + str(round(rendered_duration, 2)) + "s / " + str(round(duration, 2)) + "s."
+            )
+
         credits = [
             "CONTENT FACTORY — KAYNAK VE LİSANS KAYDI",
             "Video başlığı: " + title,
             "Süre: " + str(round(duration, 2)) + " saniye",
             "Temizlenen sessizlik: " + str(round(removed, 2)) + " saniye",
+            "Kurgu ajanı: " + str(edit_report.get("strategy", "unknown")),
+            "Kurgu kesme sayısı: " + str(len(edit_report.get("cuts", []))),
+            "Sahne/altyazı sayısı: " + str(len(groups)),
             "",
             "Kullanılan medya:",
         ]
@@ -1145,13 +1210,17 @@ def render_short_job(job_id: str) -> None:
             "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
             "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
             "",
-            "Not: Görseller çok kaynaklı araştırma motoruyla stok servisleri, açık arşivler ve web görsel indekslerinden aranır. Hak bilgisi bulunmayan öğeler ayrıca belirtilir; internette bulunması tek başına yeniden kullanım izni vermez. Yayından önce ilgili kaynağın güncel koşullarını doğrulayın.",
+            "Not: Görseller çok kaynaklı araştırma motoruyla aranır. İnternette bulunması tek başına yeniden kullanım izni vermez. Yayından önce ilgili kaynağın güncel koşullarını doğrulayın.",
         ])
         (work_dir / "sources-and-licenses.txt").write_text("\n".join(credits), encoding="utf-8")
         update_job(
-            job_id, status="completed", progress=100, message="Shorts MP4 hazır.",
-            duration=round(probe_duration(output_video), 2), removed_silence=round(removed, 2),
+            job_id, status="completed", progress=100, message="Otomatik kurgu tamamlandı; Shorts MP4 hazır.",
+            duration=round(rendered_duration, 2), removed_silence=round(removed, 2),
+            edit_cut_count=len(edit_report.get("cuts", [])),
             scene_count=len(clips), source_count=len(source_records),
+            caption_count=sum(1 for g in groups if str(g.get("text", "")).strip()),
+            qc_duration_delta=round(duration_delta, 3),
+            edit_strategy=edit_report.get("strategy", "unknown"),
         )
     except Exception as exc:
         traceback.print_exc()
