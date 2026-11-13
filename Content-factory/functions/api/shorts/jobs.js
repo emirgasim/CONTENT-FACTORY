@@ -1,6 +1,6 @@
 // Cloudflare deployment trigger: ensure Pages picks up the latest main revision.
 const MAX_AUDIO=30*1024*1024,MAX_TEXT=30000,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
-const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
+const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});\nconst mediaKey=(key,part)=>key+"/"+part;\nasync function putMedia(bucket,key,file){const buffer=await file.arrayBuffer(),parts=Math.ceil(buffer.byteLength/CHUNK);for(let i=0;i<parts;i++){const start=i*CHUNK,end=Math.min(start+CHUNK,buffer.byteLength);await bucket.put(mediaKey(key,i),buffer.slice(start,end),{httpMetadata:{contentType:file.type||"application/octet-stream"}});}return {key,parts,size:buffer.byteLength};}
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
 async function digest(value){return hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))));}
 function safeName(value,fallback){const name=String(value||fallback).split(/[\\/]/).pop().replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100);return name||fallback;}
@@ -22,9 +22,9 @@ export async function onRequestPost({request,env}){
  // No arbitrary per-IP/hourly production quota. Infrastructure/provider limits still apply.
  const id=crypto.randomUUID().replace(/-/g,""),ownerToken=hex(crypto.getRandomValues(new Uint8Array(32))),prefix="jobs/"+id+"/";
  try{
-  const audioName=inputMode==="audio"?safeName(audio.name,"narration.m4a"):"",audioFile=inputMode==="audio"?await putFile(kv,prefix+"input/audio",audio):null;
+  const audioName=inputMode==="audio"?safeName(audio.name,"narration.m4a"):"",audioFile=inputMode==="audio"?await putMedia(media,prefix+"input/audio",audio):null;
   const imageFiles=[];
-  for(let i=0;i<images.length;i++){const name=safeName(images[i].name,"reference-"+i+".jpg"),stored=await putFile(kv,prefix+"input/image-"+String(i+1).padStart(2,"0"),images[i]);imageFiles.push({...stored,name,type:images[i].type||"image/jpeg"});}
+  for(let i=0;i<images.length;i++){const name=safeName(images[i].name,"reference-"+i+".jpg"),stored=await putMedia(media,prefix+"input/image-"+String(i+1).padStart(2,"0"),images[i]);imageFiles.push({...stored,name,type:images[i].type||"image/jpeg"});}
   const createdAt=new Date(now).toISOString(),expiresAt=new Date(now+TTL_SECONDS*1000).toISOString();
   const meta={job_id:id,title:title||(visualMode==="animated"?"Animasyonlu Shorts":"Shorts"),hook,text:script,input_mode:inputMode,visual_mode:visualMode,audio:audioFile?{...audioFile,name:audioName,type:audio.type||"application/octet-stream"}:null,images:imageFiles,created_at:createdAt,expires_at:expiresAt};
   await kv.put(prefix+"input.json",JSON.stringify(meta),{expirationTtl:TTL_SECONDS});
@@ -40,7 +40,7 @@ export async function onRequestPost({request,env}){
   }
   return json({job_id:id,job_token:ownerToken,status:"queued",expires_at:expiresAt,message:"GitHub bulut işçisi işi kabul etti. iPhone ekranı kapansa da render devam eder."},202);
  }catch(error){
-  const page=await kv.list({prefix,limit:1000});if(page.keys.length)await kv.delete(page.keys.map(x=>x.name));
+  const page=await kv.list({prefix,limit:1000});if(page.keys.length)await kv.delete(page.keys.map(x=>x.name));let cursor;do{const objects=await media.list({prefix,cursor,limit:1000});if(objects.objects.length)await Promise.all(objects.objects.map(x=>media.delete(x.key)));cursor=objects.truncated?objects.cursor:undefined;}while(cursor);
   return json({error:"Bulut işi başlatılamadı: "+String(error.message||error)},502);
  }
 }
