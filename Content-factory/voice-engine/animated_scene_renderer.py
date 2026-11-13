@@ -29,9 +29,9 @@ FONT_CANDIDATES = [
 
 KIND_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("minecraft", ("minecraft", "blok", "bloklar", "küp", "kare dünya", "craft", "pixel dünya")),
-    ("pacman", ("pac-man", "pacman", "arcade", "atari", "oyun", "video oyun", "oyuncu", "level", "seviye", "piksel")),
+    ("pacman", ("pac-man", "pacman", "arcade", "atari", "video oyun", "level", "seviye", "piksel")),
     ("cartoon", ("çizgi film", "animasyon", "cartoon", "karakter", "tom ve jerry", "bugs bunny", "simpsons", "sünger bob", "yasaklanan bölüm")),
-    ("film", ("film", "sinema", "oyuncu", "aktör", "aktris", "hollywood", "kamera", "sahne", "yönetmen", "dizi", "ünlü")),
+    ("film", ("film", "sinema", "oyuncu", "aktör", "aktris", "hollywood", "kamera", "sahne", "yönetmen", "dizi", "ünlü", "celebrity", "rocky", "balboa", "stallone", "sylvester")),
     ("space", ("uzay", "gezegen", "mars", "ay'a", "astronot", "nasa", "galaksi", "yıldız", "roket", "evren")),
     ("science", ("bilim", "deney", "laboratuvar", "atom", "kimya", "fizik", "buluş", "icat", "mikroskop", "dna", "gen")),
     ("history", ("tarih", "antik", "roma", "mısır", "firavun", "kral", "kraliçe", "imparator", "savaş", "osmanlı", "orta çağ", "arkeoloji")),
@@ -360,7 +360,19 @@ def render_animated_video(scenes: list[dict[str, Any]], voice_audio_path: str,
         durations = [x * factor for x in durations]
     frame_counts = [max(1, int(round(x * fps))) for x in durations]
     drift = total_frames - sum(frame_counts)
-    frame_counts[-1] = max(1, frame_counts[-1] + drift)
+    if drift > 0:
+        frame_counts[-1] += drift
+    elif drift < 0:
+        remaining = -drift
+        for index in range(len(frame_counts) - 1, -1, -1):
+            removable = max(0, frame_counts[index] - 1)
+            take = min(removable, remaining)
+            frame_counts[index] -= take
+            remaining -= take
+            if remaining == 0:
+                break
+        if remaining:
+            raise ValueError("Sahne sayısı ve süreleri video kare hızına sığdırılamadı.")
 
     command = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
