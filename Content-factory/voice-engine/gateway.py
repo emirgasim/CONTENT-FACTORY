@@ -694,16 +694,36 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
 
     # No generic Content Factory heading is printed into the video.
 
-    # Hook: one slim, white rounded window, slightly below the top edge.
+    # Hook: compact white pill sized to its text, using the exact caption font.
+    caption_font = load_font(76)
     if hook:
-        draw_rounded_compat(draw, (55, 242, 1025, 380), radius=28, fill="#FFFFFF")
-        hook_font = load_font(43)
-        draw_centered_wrapped(draw, compact_scene_caption(hook, max_words=15, max_chars=88), hook_font, (70, 250, 1010, 372), "#111111", 2)
+        hook_text = compact_scene_caption(hook, max_words=15, max_chars=88)
+        hook_lines = wrap_lines(draw, hook_text, caption_font, 900)[:2]
+        hook_line_height = int(caption_font.size * 1.12)
+        hook_text_width = max(
+            (draw.textbbox((0, 0), line, font=caption_font)[2] for line in hook_lines),
+            default=0,
+        )
+        hook_width = min(970, max(220, hook_text_width + 72))
+        hook_height = len(hook_lines) * hook_line_height + 38
+        hook_left = (width - hook_width) // 2
+        hook_top = 242
+        draw_rounded_compat(
+            draw,
+            (hook_left, hook_top, hook_left + hook_width, hook_top + hook_height),
+            radius=24,
+            fill="#FFFFFF",
+        )
+        y = hook_top + max(0, (hook_height - len(hook_lines) * hook_line_height) // 2)
+        for line in hook_lines:
+            bbox = draw.textbbox((0, 0), line, font=caption_font)
+            x = (width - (bbox[2] - bbox[0])) // 2
+            draw.text((x, y), line, font=caption_font, fill="#111111")
+            y += hook_line_height
 
     # Story caption panel. The words are deliberately short; no generic footer slogans.
     draw.rectangle((0, 1305, width, height), fill=accent)
     draw.rectangle((0, 1305, width, 1325), fill="#111111")
-    caption_font = load_font(76)
     draw_wrapped(draw, caption, caption_font, 58, 1410, 960, ink, 3)
 
     # Optional second stock frame adds a clear visual change without covering the hook.
