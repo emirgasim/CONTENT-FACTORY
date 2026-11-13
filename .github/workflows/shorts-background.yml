@@ -6,6 +6,12 @@ on:
         description: Temporary project identifier
         required: true
         type: string
+      phase:
+        description: Research images or render approved selections
+        required: true
+        default: research
+        type: choice
+        options: [research, render]
 permissions:
   contents: read
 concurrency:
@@ -38,6 +44,7 @@ jobs:
       - name: Render in temporary GitHub runner
         env:
           JOB_ID: ${{ inputs.job_id }}
+          PHASE: ${{ inputs.phase }}
           CONTENT_FACTORY_URL: ${{ secrets.CONTENT_FACTORY_URL }}
           CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
           ASR_MODEL_SIZE: base
@@ -47,4 +54,4 @@ jobs:
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           FLICKR_API_KEY: ${{ secrets.FLICKR_API_KEY }}
           EUROPEANA_API_KEY: ${{ secrets.EUROPEANA_API_KEY }}
-        run: python Content-factory/voice-engine/cloud_worker.py --job-id "$JOB_ID"
+        run: python Content-factory/voice-engine/cloud_worker.py --job-id "$JOB_ID" --phase "$PHASE"
