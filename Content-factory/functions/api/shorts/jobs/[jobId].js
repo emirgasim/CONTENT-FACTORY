@@ -21,7 +21,7 @@ async function owns(kv, id, request) {
   return !!obj && (await digest(token)) === obj.token_hash;
 }
 
-async function removePrefix(kv, prefix) {
+async function removePrefix(kv, media, prefix) {
   let cursor;
   do {
     const page = await kv.list({ prefix, cursor, limit: 1000 });
@@ -127,7 +127,7 @@ export async function onRequestDelete({ request, env, params }) {
   const id = String(params.jobId || "");
   if (!await owns(kv, id, request)) return json({ error: "İş bulunamadı veya erişim anahtarı geçersiz." }, 404);
 
-  await removePrefix(kv, "jobs/" + id + "/");
+  await removePrefix(kv, media, "jobs/" + id + "/");
   return json({
     ok: true,
     deleted: true,
