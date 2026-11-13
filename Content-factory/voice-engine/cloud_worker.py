@@ -235,6 +235,7 @@ def render_approved_timeline(job_id,meta,work,source,selections):
 }
 
 def prepare_review(job_id,meta,work,source=None):
+ rows=[]
  if meta.get("input_mode")=="text":
   groups=make_text_groups(meta.get("text",""))
   duration=groups[-1]["end"] if groups else 0
