@@ -23,13 +23,24 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Confirm worker API configuration
+      - name: Verify Cloudflare job and publish startup status
         env:
           CONTENT_FACTORY_URL: https://content-factory-7s6.pages.dev
           CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+          JOB_ID: ${{ inputs.job_id }}
         run: |
+          set -euo pipefail
           test -n "$CF_WORKER_SECRET" || { echo "::error::CF_WORKER_SECRET secret is missing"; exit 1; }
-          echo "Worker secrets are present. Starting the actual renderer; its first API read will verify the deployed route."
+          API="$CONTENT_FACTORY_URL/api/internal/shorts/jobs/$JOB_ID"
+          curl --fail --silent --show-error "$API" \
+            -H "X-Factory-Worker-Secret: $CF_WORKER_SECRET" \
+            -o /tmp/content-factory-job.json
+          python -c 'import json; d=json.load(open("/tmp/content-factory-job.json")); assert d.get("job_id"), "Cloudflare did not return a valid job record"'
+          curl --fail --silent --show-error -X PUT "$API" \
+            -H "X-Factory-Worker-Secret: $CF_WORKER_SECRET" \
+            -H "Content-Type: application/json" \
+            --data '{"status":"processing","progress":3,"message":"Bulut işçisi başladı; çalışma ortamı hazırlanıyor."}'
+          echo "Cloudflare job and worker authentication verified."
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
