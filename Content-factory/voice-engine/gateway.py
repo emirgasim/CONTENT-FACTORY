@@ -1250,8 +1250,6 @@ def render_short_job(job_id: str, approved_scene_assets: list[tuple[Path, dict[s
                 "decisions": [{"type": "fallback", "reason": "word_alignment_or_audio_edit_unavailable"}],
             }
 
-        if duration < 8:
-            raise RuntimeError("Ses çok kısa. Lütfen daha uzun bir seslendirme üret.")
         if not rows:
             rows = fallback_segments(script, duration)
 
