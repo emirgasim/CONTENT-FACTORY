@@ -13,7 +13,7 @@ import time
 import traceback
 import uuid
 from urllib.parse import quote_plus, unquote
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -501,6 +501,81 @@ def search_library_of_congress(query: str, limit: int = 20) -> list[dict[str, st
     return items
 
 
+def search_pexels(query: str, limit: int = 20) -> list[dict[str, str]]:
+    key = os.getenv("PEXELS_API_KEY", "").strip()
+    if not key: return []
+    try:
+        r = requests.get("https://api.pexels.com/v1/search", params={"query": query, "per_page": min(80, limit), "orientation": "portrait"}, headers={"Authorization": key, "User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        photos = r.json().get("photos", [])
+    except Exception: return []
+    return [{"title": plain_text(x.get("alt") or query), "url": x.get("src", {}).get("large2x") or x.get("src", {}).get("large") or x.get("src", {}).get("original", ""), "page_url": x.get("url", ""), "author": x.get("photographer", "Unknown"), "license": "Pexels License – review current terms", "license_url": "https://www.pexels.com/license/", "credit": x.get("photographer", ""), "mime": "image/unknown", "source": "Pexels"} for x in photos]
+
+
+def search_pixabay(query: str, limit: int = 20) -> list[dict[str, str]]:
+    key = os.getenv("PIXABAY_API_KEY", "").strip()
+    if not key: return []
+    try:
+        r = requests.get("https://pixabay.com/api/", params={"key": key, "q": query, "image_type": "photo", "orientation": "vertical", "per_page": min(200, limit), "safesearch": "true"}, headers={"User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        hits = r.json().get("hits", [])
+    except Exception: return []
+    return [{"title": plain_text(x.get("tags") or query), "url": x.get("largeImageURL") or x.get("webformatURL", ""), "page_url": x.get("pageURL", ""), "author": x.get("user", "Unknown"), "license": "Pixabay Content License – review current terms", "license_url": "https://pixabay.com/service/license-summary/", "credit": x.get("user", ""), "mime": "image/unknown", "source": "Pixabay"} for x in hits]
+
+
+def search_unsplash(query: str, limit: int = 20) -> list[dict[str, str]]:
+    key = os.getenv("UNSPLASH_ACCESS_KEY", "").strip()
+    if not key: return []
+    try:
+        r = requests.get("https://api.unsplash.com/search/photos", params={"query": query, "per_page": min(30, limit), "orientation": "portrait"}, headers={"Authorization": "Client-ID " + key, "User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        photos = r.json().get("results", [])
+    except Exception: return []
+    items = []
+    for x in photos:
+        user = x.get("user") or {}
+        items.append({"title": plain_text(x.get("alt_description") or x.get("description") or query), "url": (x.get("urls") or {}).get("regular", ""), "page_url": (x.get("links") or {}).get("html", ""), "author": user.get("name", "Unknown"), "license": "Unsplash License – review current terms", "license_url": "https://unsplash.com/license", "credit": user.get("name", ""), "mime": "image/unknown", "source": "Unsplash"})
+    return items
+
+
+def search_flickr(query: str, limit: int = 20) -> list[dict[str, str]]:
+    key = os.getenv("FLICKR_API_KEY", "").strip()
+    if not key: return []
+    try:
+        r = requests.get("https://www.flickr.com/services/rest/", params={"method": "flickr.photos.search", "api_key": key, "text": query, "per_page": min(100, limit), "page": 1, "format": "json", "nojsoncallback": 1, "media": "photos", "sort": "relevance", "extras": "url_o,url_l,url_c,owner_name,license"}, headers={"User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        photos = r.json().get("photos", {}).get("photo", [])
+    except Exception: return []
+    return [{"title": plain_text(x.get("title") or query), "url": x.get("url_o") or x.get("url_l") or x.get("url_c") or "", "page_url": "https://www.flickr.com/photos/" + str(x.get("owner")) + "/" + str(x.get("id")), "author": x.get("ownername", "Unknown"), "license": "Flickr license ID " + str(x.get("license", "unknown")) + " – verify on source page", "license_url": "https://www.flickr.com/services/api/flickr.photos.licenses.getInfo.html", "credit": x.get("ownername", ""), "mime": "image/unknown", "source": "Flickr"} for x in photos]
+
+
+def search_nasa(query: str, limit: int = 20) -> list[dict[str, str]]:
+    try:
+        r = requests.get("https://images-api.nasa.gov/search", params={"q": query, "media_type": "image", "page_size": min(100, limit)}, headers={"User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        rows = r.json().get("collection", {}).get("items", [])
+    except Exception: return []
+    items = []
+    for row in rows:
+        data = (row.get("data") or [{}])[0]
+        links = row.get("links") or []
+        image_url = next((x.get("href", "") for x in links if x.get("rel") == "preview"), "")
+        if image_url:
+            items.append({"title": plain_text(data.get("title") or query), "url": image_url, "page_url": data.get("nasa_id") and "https://images.nasa.gov/details/" + str(data["nasa_id"]) or "", "author": "NASA", "license": "NASA media usage guidance – review item-specific restrictions", "license_url": "https://www.nasa.gov/nasa-brand-center/images-and-media/", "credit": "NASA", "mime": "image/unknown", "source": "NASA"})
+    return items
+
+
+def search_europeana(query: str, limit: int = 20) -> list[dict[str, str]]:
+    key = os.getenv("EUROPEANA_API_KEY", "").strip()
+    if not key: return []
+    try:
+        r = requests.get("https://api.europeana.eu/record/v2/search.json", params={"wskey": key, "query": query, "media": "true", "thumbnail": "true", "rows": min(100, limit)}, headers={"User-Agent": USER_AGENT}, timeout=15)
+        r.raise_for_status()
+        rows = r.json().get("items", [])
+    except Exception: return []
+    return [{"title": plain_text(x.get("title", [query])[0] if isinstance(x.get("title"), list) else x.get("title") or query), "url": x.get(" edmPreview") or x.get("edmPreview", ""), "page_url": x.get("guid", ""), "author": plain_text((x.get("dcCreator") or ["Unknown"])[0]), "license": str(x.get("rights", ["Unknown"])[0]), "license_url": str(x.get("rights", [""])[0]), "credit": plain_text((x.get("dataProvider") or [""])[0]), "mime": "image/unknown", "source": "Europeana"} for x in rows if x.get("edmPreview")]
+
+
 def search_web_image_engine(engine: str, query: str, limit: int = 20) -> list[dict[str, str]]:
     """Fetch publicly accessible image results from mainstream image search pages.
     Search engines may throttle automated requests; failures are isolated per provider.
@@ -562,20 +637,30 @@ def search_web_image_engine(engine: str, query: str, limit: int = 20) -> list[di
 
 
 def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
-    """Search open archives plus Google, Bing and Yandex image results."""
-    results: list[dict[str, str]] = []
-    seen: set[str] = set()
-    providers = (
-        search_commons, search_openverse, search_library_of_congress,
+    """Federated image research: API providers first, broad web indexes as fallbacks."""
+    providers = [
+        search_pexels, search_pixabay, search_unsplash, search_flickr,
+        search_openverse, search_commons, search_library_of_congress,
+        search_nasa, search_europeana,
         lambda q, limit: search_web_image_engine("Google Images", q, limit),
         lambda q, limit: search_web_image_engine("Bing Images", q, limit),
         lambda q, limit: search_web_image_engine("Yandex Images", q, limit),
-    )
-    per_provider = max(5, min(20, limit // len(providers) + 3))
-    for provider in providers:
-        for item in provider(query, limit=per_provider):
-            url = item.get("url", "")
-            if url and url not in seen:
+    ]
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    per_provider = max(6, min(18, limit))
+    # Query independent providers concurrently to reduce render wait time.
+    with ThreadPoolExecutor(max_workers=min(12, len(providers))) as pool:
+        futures = [pool.submit(provider, query, per_provider) for provider in providers]
+        for future in as_completed(futures, timeout=45):
+            try:
+                items = future.result()
+            except Exception:
+                continue
+            for item in items:
+                url = str(item.get("url") or "").strip()
+                if not url or url in seen:
+                    continue
                 seen.add(url)
                 results.append(item)
                 if len(results) >= limit:
@@ -905,7 +990,7 @@ def render_short_job(job_id: str) -> None:
         groups = make_scene_groups(rows, duration)
         if not groups:
             groups = fallback_segments(script, duration)
-        update_job(job_id, progress=38, message="Google, Yandex, Bing ve açık web kaynaklarında görseller aranıyor…")
+        update_job(job_id, progress=38, message="Çok kaynaklı görsel araştırması: stok servisleri, açık arşivler ve web görsel indeksleri taranıyor…")
         source_records: list[dict[str, str]] = []
         scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
         user_images: list[Path] = []
@@ -995,7 +1080,7 @@ def render_short_job(job_id: str) -> None:
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
             update_job(job_id, progress=progress, message="Her sahneye farklı görsel aranıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
         if not stock_pool:
-            raise RuntimeError("Konuya uygun lisanslı gerçek stok fotoğrafı bulunamadı. Geometrik/piksel çizim yerine render durduruldu.")
+            raise RuntimeError("Bu sahne için indirilebilir ve görüntü olarak doğrulanabilen gerçek görsel bulunamadı. Başka arama terimleriyle tekrar dene.")
 
         clips = []
         total_duration = duration
