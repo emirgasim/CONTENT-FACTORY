@@ -4,15 +4,18 @@ The cloud renderer uses a federated image-research layer. It searches multiple i
 
 ## Providers
 
+**No API key or account setup is required for the default search path.** The renderer must remain fully functional when every optional API secret is absent.
+
 ### No-key providers
 - Openverse
 - Wikimedia Commons
 - Library of Congress
 - NASA Images and Media API
+- DuckDuckGo Images (best-effort, keyless image endpoint)
 - Google Images, Bing Images, and Yandex Images public result pages (best-effort fallback; HTML layouts, bot checks, and regional access can change without notice)
 
 ### Optional API integrations
-Configure these as **GitHub Actions repository secrets** (Settings → Secrets and variables → Actions) for `emirgasim/CONTENT-FACTORY`. The background renderer workflow passes them securely to the cloud worker:
+These integrations are enhancements only. **Do not stop setup or video generation to obtain these keys.** If the owner later chooses to add one, it can be stored as a GitHub Actions repository secret and passed securely to the cloud worker:
 
 | Secret | Provider | Notes |
 |---|---|---|
@@ -22,11 +25,12 @@ Configure these as **GitHub Actions repository secrets** (Settings → Secrets a
 | `FLICKR_API_KEY` | Flickr | Official API; key required |
 | `EUROPEANA_API_KEY` | Europeana | Official API; key required |
 
-The engine works without these keys, but adding them substantially expands the search pool and makes retrieval more reliable than scraping search pages.
+The engine works without any of these keys. Missing keys are treated as an unavailable optional provider, never as a fatal configuration error.
 
 ## Search and selection behavior
 
 - Queries are generated per caption/scene, not just from the video title.
+- No-key providers are always attempted; optional API providers are added only when their credentials exist.
 - Provider calls run concurrently; an unavailable provider does not block the others.
 - Duplicate image URLs are discarded within a render.
 - Images are downloaded and decoded with Pillow before use; HTML error pages and invalid image payloads are rejected.
