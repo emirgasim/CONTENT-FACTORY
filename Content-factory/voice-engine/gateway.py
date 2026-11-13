@@ -711,9 +711,11 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
         key=lambda item: visual_relevance_score(query, item),
         reverse=True,
     )
-    # Reject results whose metadata does not support the requested scene.
-    relevant = [item for item in ranked if visual_relevance_score(query, item) >= 2]
-    return relevant[:limit]
+    # The provider has already searched for this query. Metadata-only overlap
+    # is too strict for visual concepts (e.g. "betrayal", "fear", "turning point")
+    # and was causing valid provider results to be discarded. Rank first; verify
+    # the actual downloaded image before accepting it.
+    return ranked[:limit]
 
 
 VISUAL_ENGLISH_WORDS = {
@@ -1072,23 +1074,56 @@ def render_short_job(job_id: str) -> None:
                 except Exception:
                     pass
 
-        # Search and select an image for each narration beat independently.
-        # Never fill a missing scene with a random image found for a different line.
+        # Build a topic-specific reserve before rendering individual scenes.
+        # This prevents a single weak scene query from aborting the entire video.
         seen_asset_urls: set[str] = set()
+        downloaded_assets: list[tuple[Path, dict[str, str]]] = []
+        query_cache: dict[str, list[dict[str, str]]] = {}
+        topic_queries = visual_search_queries(title, hook, script)
         topic_anchor = english_visual_query(title + " " + hook)
+        if topic_anchor and topic_anchor not in topic_queries:
+            topic_queries.insert(0, topic_anchor)
+        if not topic_queries:
+            topic_queries = [extract_keywords(title + " " + hook + " " + script[:300])]
+
+        for topic_query in topic_queries[:4]:
+            if not topic_query:
+                continue
+            candidates = search_public_assets(topic_query, limit=36)
+            query_cache[topic_query] = candidates
+            for candidate in candidates:
+                url = str(candidate.get("url") or "").strip()
+                if not url or url in seen_asset_urls:
+                    continue
+                asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
+                if not asset_path:
+                    continue
+                seen_asset_urls.add(url)
+                source_records.append(candidate)
+                downloaded_assets.append((asset_path, candidate))
+                if len(downloaded_assets) >= max(12, min(36, len(groups) * 2)):
+                    break
+            if len(downloaded_assets) >= max(12, min(36, len(groups) * 2)):
+                break
+
         for idx, group in enumerate(groups):
             scene_terms = english_visual_query(group["text"]) or extract_keywords(group["text"])
             scene_query = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
             selected: tuple[Path, dict[str, str]] | None = None
 
-            for candidate_query in [scene_query, topic_anchor]:
+            # Try a specific search for this scene, then progressively broaden.
+            # A provider result is not rejected solely because its title lacks
+            # the same literal words as the narration.
+            candidate_queries = [scene_query, scene_terms, topic_anchor]
+            for candidate_query in candidate_queries:
+                candidate_query = re.sub(r"\\s+", " ", candidate_query or "").strip()
                 if not candidate_query:
                     continue
-                for candidate in search_public_assets(candidate_query, limit=40):
+                if candidate_query not in query_cache:
+                    query_cache[candidate_query] = search_public_assets(candidate_query, limit=24)
+                for candidate in query_cache[candidate_query]:
                     url = str(candidate.get("url") or "").strip()
                     if not url or url in seen_asset_urls:
-                        continue
-                    if visual_relevance_score(candidate_query, candidate) < 2:
                         continue
                     asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
                     if not asset_path:
@@ -1096,9 +1131,43 @@ def render_short_job(job_id: str) -> None:
                     selected = (asset_path, candidate)
                     seen_asset_urls.add(url)
                     source_records.append(candidate)
+                    downloaded_assets.append(selected)
                     break
                 if selected:
                     break
+
+            # If a scene-specific query fails, use the best unused image from
+            # the already verified pool for this same video's topic—not a random
+            # internet image and never an unrelated search result.
+            if selected is None and downloaded_assets:
+                scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_terms or "").lower()))
+                topic_tokens = set(re.findall(r"[a-z0-9]+", (topic_anchor or "").lower()))
+                ranked_pool = sorted(
+                    downloaded_assets,
+                    key=lambda pair: (
+                        visual_relevance_score(scene_terms, pair[1]) +
+                        visual_relevance_score(topic_anchor, pair[1]) +
+                        len(scene_tokens & set(re.findall(r"[a-z0-9]+", str(pair[1].get("title", "")).lower())))
+                    ),
+                    reverse=True,
+                )
+                selected = next((pair for pair in ranked_pool if pair[0] not in [x[0] for x in scene_assets]), None)
+                if selected is None:
+                    selected = ranked_pool[idx % len(ranked_pool)]
+
+            # User-supplied reference images remain the final intentional fallback.
+            if selected is None and user_images:
+                own_path = user_images[idx % len(user_images)]
+                selected = (own_path, {
+                    "title": own_path.name,
+                    "author": "User supplied",
+                    "license": "User supplied; verify your own rights",
+                    "license_url": "",
+                    "page_url": "",
+                    "url": "",
+                    "source": "User upload",
+                })
+                source_records.append(selected[1])
 
             # User-supplied reference images are trusted as intentional inputs.
             if selected is None and user_images:
