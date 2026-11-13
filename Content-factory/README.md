@@ -4,17 +4,16 @@ Shorts rendering runs on a temporary GitHub-hosted Linux runner, not in iPhone S
 
 ## Background workflow
 
-1. From iPhone Safari, submit the topic title, mandatory hook, narration text, audio file and up to eight optional visual references.
-2. Cloudflare Pages Function stores the files in a private Cloudflare R2 bucket and dispatches the `shorts-background.yml` GitHub Actions workflow.
-3. A separate GitHub-hosted Linux runner downloads the job from R2, trims pauses, transcribes the narration, searches open image collections and renders the MP4 with FFmpeg.
-4. The runner uploads the MP4, cleaned WAV, source/credits report and job status back to the private R2 bucket.
-5. The iPhone page polls the R2-backed status endpoint. The user downloads the MP4 and presses `İndirdim, projeyi sil` to delete the entire project prefix immediately.
-6. If the user does not confirm deletion, a scheduled cleanup workflow runs every six hours and removes jobs after their 24-hour expiry.
+1. From iPhone Safari, submit only the mandatory hook and narration audio file. No narration text or topic title is required.
+2. Cloudflare Pages stores the audio and job metadata in the private `SHORTS_TEMP` Workers KV namespace and dispatches the `shorts-background.yml` workflow in `research` phase.
+3. The temporary GitHub-hosted Linux runner transcribes the audio, creates sentence-timed scene beats, researches open image sources and uses CLIP to visually rank candidate images. It uploads candidate previews and a review manifest, then stops at `awaiting_approval`; it does not render.
+4. The user reviews each scene and selects one candidate. The authenticated approval endpoint stores the exact selected candidate IDs and dispatches the workflow in `render` phase.
+5. The render worker downloads those exact selected images, re-creates the same audio timeline and passes the approved image list to the renderer. It uploads the MP4, cleaned WAV and source/credits report to KV.
+6. The user downloads the MP4 and presses `İndirdim, projeyi sil` to delete the entire job prefix immediately. KV keys have a 24-hour expiry as a fallback.
 
 ## One-time Cloudflare setup
 
-1. In Cloudflare R2, create a private bucket named `content-factory-short-jobs`.
-2. In the Cloudflare Pages project `content-factory`, open Settings → Functions → R2 bucket bindings. Add binding name `SHORTS_JOBS` and select bucket `content-factory-short-jobs`. The same binding is declared in `wrangler.toml`; ensure it is present for Production (and Preview only if testing previews).
+1. In Cloudflare Pages, confirm the Workers KV namespace ID in `wrangler.toml` is the intended namespace and the binding name is exactly `SHORTS_TEMP` for Production (and Preview only if testing previews).
 3. In Pages Settings → Variables and Secrets, add the production secret `GITHUB_ACTIONS_TOKEN`. Use a GitHub fine-grained token restricted to this repository with Actions: Read and write permission. This token is server-side only and is never sent to the browser.
 4. Redeploy the Pages project after adding the R2 binding and secret.
 
@@ -39,7 +38,7 @@ Create an R2 API token with object read/write access limited to this bucket. Do 
 - After the user downloads the MP4 and confirms, the Pages Function deletes every object under that job prefix.
 - Scheduled fallback cleanup expires unconfirmed projects after 24 hours and runs every six hours; therefore storage cleanup may happen up to approximately six hours after the 24-hour expiry.
 - Per-IP submission guard: at most four jobs per hour. Old rate-limit counters are also cleaned by the scheduled worker.
-- The R2 bucket must remain private. Do not enable public bucket access or expose R2 credentials.
+- The `SHORTS_TEMP` KV namespace is private to Pages Functions. Do not expose the worker secret or job owner tokens. All job keys are prefixed by a random job ID and expire after 24 hours.
 
 ## Render environment
 
