@@ -395,7 +395,7 @@ def search_commons(query: str, limit: int = 20) -> list[dict[str, str]]:
     params = {
         "action": "query", "format": "json", "generator": "search",
         "gsrsearch": query, "gsrnamespace": "6", "gsrlimit": str(min(50, limit)),
-        "prop": "imageinfo", "iiprop": "url|extmetadata", "iiurlwidth": "1400",
+        "prop": "imageinfo", "iiprop": "url|extmetadata|mime|size", "iiurlwidth": "1600",
     }
     try:
         response = requests.get(COMMONS_API, params=params, headers={"User-Agent": USER_AGENT}, timeout=25)
@@ -678,8 +678,38 @@ def search_web_image_engine(engine: str, query: str, limit: int = 20) -> list[di
     return found
 
 
+def translate_visual_query(query: str) -> str:
+    """Best-effort Turkish-to-English query translation for international image indexes."""
+    value = re.sub(r"\s+", " ", str(query or "")).strip()
+    if not value:
+        return value
+    if not re.search(r"[çğıöşü]", value.lower()) and not re.search(
+        r"\b(ve|bir|için|olan|hakkında|nasıl|neden|ünlülerin|hikayesi)\b",
+        value.lower(),
+    ):
+        return value
+    try:
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "tr", "tl": "en", "dt": "t", "q": value[:450]},
+            headers={"User-Agent": USER_AGENT},
+            timeout=(3, 6),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        translated = " ".join(
+            str(part[0]) for part in (payload[0] or [])
+            if isinstance(part, list) and part and part[0]
+        ).strip()
+        return translated or value
+    except Exception as exc:
+        print("[visual-search] translation fallback:", type(exc).__name__, str(exc)[:180])
+        return value
+
+
 def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
-    """Federated image research: API providers first, broad web indexes as fallbacks."""
+    """Federated image research with diagnostics and an English-query fallback."""
+    search_query = translate_visual_query(query)
     providers = [
         search_pexels, search_pixabay, search_unsplash, search_flickr,
         search_openverse, search_commons, search_library_of_congress,
@@ -688,33 +718,38 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     seen: set[str] = set()
     per_provider = max(8, min(24, limit))
-    # Keep providers that return item-level titles/source pages. Generic scraped
-    # image thumbnails without reliable metadata created unrelated scenes.
+    provider_counts: dict[str, int] = {}
     with ThreadPoolExecutor(max_workers=min(10, len(providers))) as pool:
-        futures = [pool.submit(provider, query, per_provider) for provider in providers]
+        futures = {pool.submit(provider, search_query, per_provider): provider.__name__ for provider in providers}
         try:
-            for future in as_completed(futures, timeout=14):
+            for future in as_completed(futures, timeout=18):
+                provider_name = futures[future]
                 try:
                     items = future.result()
-                except Exception:
+                    provider_counts[provider_name] = len(items or [])
+                except Exception as exc:
+                    provider_counts[provider_name] = -1
+                    print("[visual-search] provider failure:", provider_name, type(exc).__name__, str(exc)[:180])
                     continue
-                for item in items:
+                for item in items or []:
                     url = str(item.get("url") or "").strip()
                     if not url or url in seen:
                         continue
                     seen.add(url)
                     results.append(item)
         except TimeoutError:
-            pass
+            unfinished = [name for future, name in futures.items() if not future.done()]
+            print("[visual-search] provider timeout:", ",".join(unfinished))
     ranked = sorted(
         results,
-        key=lambda item: visual_relevance_score(query, item),
+        key=lambda item: visual_relevance_score(search_query, item),
         reverse=True,
     )
-    # The provider has already searched for this query. Metadata-only overlap
-    # is too strict for visual concepts (e.g. "betrayal", "fear", "turning point")
-    # and was causing valid provider results to be discarded. Rank first; verify
-    # the actual downloaded image before accepting it.
+    print(
+        "[visual-search] query=", search_query[:120],
+        "providers=", json.dumps(provider_counts, ensure_ascii=False),
+        "results=", len(ranked),
+    )
     return ranked[:limit]
 
 
@@ -837,32 +872,49 @@ def extract_keywords(text: str) -> str:
 
 
 def download_image_asset(item: dict[str, str], directory: Path, index: int) -> Path | None:
+    """Download and normalize a real image, tolerating imperfect provider MIME headers."""
+    raw_path = directory / ("web-image-" + str(index) + "-source.bin")
+    output_path = directory / ("web-image-" + str(index) + ".jpg")
     try:
-        response = requests.get(item["url"], headers={"User-Agent": USER_AGENT}, timeout=30, stream=True)
+        response = requests.get(
+            item["url"],
+            headers={"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*"},
+            timeout=(8, 22),
+            stream=True,
+        )
         response.raise_for_status()
-        content_type = response.headers.get("Content-Type", "")
-        if not content_type.startswith("image/"):
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if content_type in {"text/html", "application/json", "text/plain"}:
+            print("[visual-search] non-image response:", item.get("source"), content_type, item.get("url", "")[:160])
             return None
         content = bytearray()
         for chunk in response.iter_content(1024 * 128):
             if chunk:
                 content.extend(chunk)
                 if len(content) > 18 * 1024 * 1024:
+                    print("[visual-search] image exceeds size limit:", item.get("url", "")[:160])
                     return None
-        path = directory / ("web-image-" + str(index) + ".img")
-        path.write_bytes(content)
-        with Image.open(path) as image:
-            image.verify()
-        with Image.open(path) as image:
+        if len(content) < 2048:
+            return None
+        raw_path.write_bytes(content)
+        with Image.open(raw_path) as image:
+            image.seek(0)
+            image.load()
             if image.width < 480 or image.height < 360:
-                path.unlink(missing_ok=True)
                 return None
-            if image.format not in {"JPEG", "PNG", "WEBP"}:
-                path.unlink(missing_ok=True)
-                return None
-        return path
-    except Exception:
+            image.convert("RGB").save(output_path, format="JPEG", quality=91, optimize=True)
+        return output_path
+    except Exception as exc:
+        print(
+            "[visual-search] download/decode failed:",
+            item.get("source", "unknown"),
+            type(exc).__name__,
+            str(exc)[:220],
+            str(item.get("url", ""))[:160],
+        )
         return None
+    finally:
+        raw_path.unlink(missing_ok=True)
 
 
 def load_font(size: int, bold: bool = True):
@@ -917,6 +969,68 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
         draw.text((x, y), line, font=font, fill=fill, stroke_width=2, stroke_fill="#161616")
         y += int(font.size * 1.18)
     return y
+
+
+def create_fallback_visual_asset(text: str, directory: Path, index: int) -> tuple[Path, dict[str, str]]:
+    """Create a scene-specific graphic card only when all external image providers fail."""
+    import hashlib
+    value = re.sub(r"\s+", " ", str(text or "Öne çıkan detay")).strip()
+    digest = hashlib.sha256(value.encode("utf-8")).digest()
+    palettes = [
+        ("#111827", "#1D4ED8", "#7DD3FC"),
+        ("#171717", "#7C2D12", "#FDBA74"),
+        ("#111827", "#065F46", "#6EE7B7"),
+        ("#1F1635", "#6D28D9", "#DDD6FE"),
+        ("#24151C", "#9F1239", "#FDA4AF"),
+    ]
+    background, accent, light = palettes[digest[0] % len(palettes)]
+    width, height = 1000, 1200
+    canvas = Image.new("RGB", (width, height), background)
+    pixels = canvas.load()
+    start_rgb = tuple(int(background[i:i+2], 16) for i in (1, 3, 5))
+    end_rgb = tuple(int(accent[i:i+2], 16) for i in (1, 3, 5))
+    for y in range(height):
+        blend = y / max(1, height - 1)
+        color = tuple(int(start_rgb[k] * (1-blend) + end_rgb[k] * blend * 0.38) for k in range(3))
+        for x in range(width):
+            pixels[x, y] = color
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    draw.ellipse((560, -180, 1180, 440), outline=(255,255,255,42), width=5)
+    draw.ellipse((610, -130, 1130, 390), outline=(255,255,255,26), width=3)
+    draw.ellipse((-260, 700, 480, 1440), outline=(255,255,255,35), width=5)
+    draw.rounded_rectangle((64, 72, 350, 128), radius=18, fill=(255,255,255,24), outline=(255,255,255,60), width=2)
+    draw.text((88, 86), "SCENE VISUAL", font=load_font(27), fill=light)
+    draw.rounded_rectangle((64, 1020, 936, 1088), radius=20, fill=(0,0,0,65))
+    draw.text((92, 1037), "CONTENT FACTORY  •  VISUAL BACKUP", font=load_font(22), fill=(255,255,255,210))
+    words = value.split()
+    lines = []
+    line = ""
+    font = load_font(62)
+    for word in words:
+        candidate = (line + " " + word).strip()
+        if draw.textbbox((0,0), candidate, font=font)[2] > 820 and line:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    y = 360 if len(lines) <= 3 else 280
+    for line in lines[:5]:
+        draw.text((78, y), line, font=font, fill=(255,255,255,245), stroke_width=2, stroke_fill=(0,0,0,75))
+        y += 82
+    path = directory / ("generated-scene-fallback-" + str(index) + ".jpg")
+    canvas.save(path, quality=92)
+    metadata = {
+        "title": value[:180],
+        "author": "Content Factory",
+        "license": "Generated graphic fallback; no third-party image",
+        "license_url": "",
+        "page_url": "",
+        "url": "",
+        "source": "Generated scene visual fallback",
+    }
+    return path, metadata
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
@@ -1165,10 +1279,14 @@ def render_short_job(job_id: str) -> None:
                 source_records.append(selected[1])
 
             if selected is None:
-                raise RuntimeError(
-                    "Sahne " + str(idx + 1) + "/" + str(len(groups)) +
-                    " için konuyla ilgili doğrulanmış görsel bulunamadı. Sistem alakasız görsel kullanarak videoyu tamamlamayacak."
-                )
+                # Never stop the entire render because one scene has no stock image.
+                # Prefer a previously downloaded image from this same video's topic.
+                if downloaded_assets:
+                    selected = downloaded_assets[idx % len(downloaded_assets)]
+                else:
+                    selected = create_fallback_visual_asset(group.get("text", ""), work_dir, idx + 1)
+                    source_records.append(selected[1])
+                    print("[visual-search] using scene graphic fallback:", idx + 1, group.get("text", "")[:140])
 
             scene_assets.append([selected])
             progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
