@@ -1,5 +1,5 @@
 // Cloudflare deployment trigger: ensure Pages picks up the latest main revision.
-const MAX_AUDIO=30*1024*1024,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
+const MAX_AUDIO=30*1024*1024,MAX_TEXT=30000,MAX_IMAGE=8*1024*1024,MAX_IMAGES=8,TTL_SECONDS=86400,CHUNK=16*1024*1024;
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
 async function digest(value){return hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value))));}
@@ -10,20 +10,22 @@ export async function onRequestPost({request,env}){
  if(!kv)return json({error:"Ücretsiz geçici depolama bağlantısı eksik. Cloudflare Pages ayarlarında SHORTS_TEMP KV binding oluşturulmalı."},503);
  if(!env.GITHUB_ACTIONS_TOKEN)return json({error:"GitHub bulut işçisi henüz etkinleştirilmedi. Pages secret GITHUB_ACTIONS_TOKEN gerekli."},503);
  let form;try{form=await request.formData();}catch{return json({error:"Gönderilen proje formu okunamadı."},400);}
- const title=String(form.get("title")||form.get("hook")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio");
- if(!hook||!audio||typeof audio.arrayBuffer!=="function")return json({error:"Zorunlu kanca ve ses dosyası gerekli."},400);
- if(audio.size<1||audio.size>MAX_AUDIO)return json({error:"Ses dosyası boş veya 30 MB sınırını aşıyor."},413);
+ const title=String(form.get("title")||form.get("hook")||"Shorts").trim().slice(0,120),hook=String(form.get("hook")||"").trim().slice(0,100),audio=form.get("audio"),inputMode=String(form.get("input_mode")||"audio"),script=String(form.get("text")||"").trim();
+ if(!hook)return json({error:"Video kanca başlığı gerekli."},400);
+ if(!["audio","text"].includes(inputMode))return json({error:"Geçersiz giriş türü."},400);
+ if(inputMode==="text"){if(!script||script.length>MAX_TEXT)return json({error:"Metin boş veya 30.000 karakter sınırını aşıyor."},413);}
+ else if(!audio||typeof audio.arrayBuffer!=="function"||audio.size<1||audio.size>MAX_AUDIO)return json({error:"Ses dosyası boş veya 30 MB sınırını aşıyor."},413);
  const images=[];
  if(images.length>MAX_IMAGES||images.some(x=>x.size>MAX_IMAGE))return json({error:"En fazla 8 referans görsel, her biri en fazla 8 MB olabilir."},413);
  const now=Date.now();
  // No arbitrary per-IP/hourly production quota. Infrastructure/provider limits still apply.
  const id=crypto.randomUUID().replace(/-/g,""),ownerToken=hex(crypto.getRandomValues(new Uint8Array(32))),prefix="jobs/"+id+"/";
  try{
-  const audioName=safeName(audio.name,"narration.m4a"),audioFile=await putFile(kv,prefix+"input/audio",audio);
+  const audioName=inputMode==="audio"?safeName(audio.name,"narration.m4a"):"",audioFile=inputMode==="audio"?await putFile(kv,prefix+"input/audio",audio):null;
   const imageFiles=[];
   for(let i=0;i<images.length;i++){const name=safeName(images[i].name,"reference-"+i+".jpg"),stored=await putFile(kv,prefix+"input/image-"+String(i+1).padStart(2,"0"),images[i]);imageFiles.push({...stored,name,type:images[i].type||"image/jpeg"});}
   const createdAt=new Date(now).toISOString(),expiresAt=new Date(now+TTL_SECONDS*1000).toISOString();
-  const meta={job_id:id,title,hook,text:"",audio:{...audioFile,name:audioName,type:audio.type||"application/octet-stream"},images:imageFiles,created_at:createdAt,expires_at:expiresAt};
+  const meta={job_id:id,title,hook,text:script,input_mode:inputMode,audio:audioFile?{...audioFile,name:audioName,type:audio.type||"application/octet-stream"}:null,images:imageFiles,created_at:createdAt,expires_at:expiresAt};
   await kv.put(prefix+"input.json",JSON.stringify(meta),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"owner.json",JSON.stringify({token_hash:await digest(ownerToken)}),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"status.json",JSON.stringify({job_id:id,status:"queued",progress:1,message:"Bulut render kuyruğuna alındı.",created_at:createdAt,updated_at:createdAt,expires_at:expiresAt}),{expirationTtl:TTL_SECONDS});
