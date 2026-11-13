@@ -47,5 +47,24 @@ class TimelineRecoveryTests(unittest.TestCase):
         self.assertIn("başladı.", " ".join(x["text"] for x in groups))
 
 
+    def test_ambiguous_scene_keeps_subject_from_nearby_context(self):
+        target, queries = cloud_worker.build_scene_visual_query_plan(
+            "geliyor. Ama bu efsanevi karakter doğmadan önce",
+            "Today Rocky Balboa is mentioned and Sylvester Stallone comes to mind",
+            {"title": "Rocky Balboa story", "hook": "Rocky Balboa"},
+        )
+        self.assertIn("Rocky Balboa", target)
+        self.assertTrue(any("Sylvester Stallone" in query for query in queries))
+        self.assertTrue(any("young actor" in query or "early career" in query for query in queries))
+
+    def test_generic_scene_uses_project_context_before_bad_scene_translation(self):
+        target, queries = cloud_worker.build_scene_visual_query_plan(
+            "Ama bu hikâyeden önce",
+            "The Apollo 11 moon landing and Neil Armstrong",
+            {"title": "Apollo 11 mission", "hook": "Neil Armstrong"},
+        )
+        self.assertIn("Apollo", target)
+        self.assertTrue(any("Neil Armstrong" in query for query in queries))
+
 if __name__ == "__main__":
     unittest.main()
