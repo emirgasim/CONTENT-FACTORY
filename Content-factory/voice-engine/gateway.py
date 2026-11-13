@@ -12,6 +12,7 @@ import threading
 import time
 import traceback
 import uuid
+from urllib.parse import quote_plus, unquote
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -500,12 +501,77 @@ def search_library_of_congress(query: str, limit: int = 20) -> list[dict[str, st
     return items
 
 
+def search_web_image_engine(engine: str, query: str, limit: int = 20) -> list[dict[str, str]]:
+    """Fetch publicly accessible image results from mainstream image search pages.
+    Search engines may throttle automated requests; failures are isolated per provider.
+    """
+    encoded = quote_plus(query)
+    endpoints = {
+        "Google Images": "https://www.google.com/search?tbm=isch&q=" + encoded,
+        "Bing Images": "https://www.bing.com/images/search?q=" + encoded,
+        "Yandex Images": "https://yandex.com/images/search?text=" + encoded,
+    }
+    endpoint = endpoints.get(engine)
+    if not endpoint:
+        return []
+    try:
+        response = requests.get(
+            endpoint,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        page = html.unescape(response.text).replace("\\u0026", "&").replace("\\/", "/")
+    except Exception:
+        return []
+
+    patterns = {
+        "Google Images": [r'"ou":"(https?://[^"]+)"', r'"imageUrl":"(https?://[^"]+)"'],
+        "Bing Images": [r'"murl":"(https?://[^"]+)"'],
+        "Yandex Images": [r'"img_href":"(https?://[^"]+)"', r'"origUrl":"(https?://[^"]+)"'],
+    }
+    found: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for pattern in patterns[engine]:
+        for raw_url in re.findall(pattern, page, re.I):
+            url = unquote(raw_url).replace("\\u0026", "&").replace("\\/", "/")
+            url = url.replace("&amp;", "&")
+            if not url.startswith("https://") or url in seen:
+                continue
+            if any(bad in url.lower() for bad in ("gstatic.com", "bing.com/th", "yandex.net/i")):
+                continue
+            seen.add(url)
+            found.append({
+                "title": query,
+                "url": url,
+                "page_url": endpoint,
+                "author": "Not identified by image search",
+                "license": "Unknown – verify usage rights before publication",
+                "license_url": "",
+                "credit": "",
+                "mime": "image/unknown",
+                "source": engine,
+            })
+            if len(found) >= limit:
+                return found
+    return found
+
+
 def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
-    """Search multiple public no-key catalogs; never assume every indexed image is reusable."""
-    results = []
-    seen = set()
-    providers = (search_commons, search_openverse, search_library_of_congress)
-    per_provider = max(5, min(20, limit // len(providers)))
+    """Search open archives plus Google, Bing and Yandex image results."""
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    providers = (
+        search_commons, search_openverse, search_library_of_congress,
+        lambda q, limit: search_web_image_engine("Google Images", q, limit),
+        lambda q, limit: search_web_image_engine("Bing Images", q, limit),
+        lambda q, limit: search_web_image_engine("Yandex Images", q, limit),
+    )
+    per_provider = max(5, min(20, limit // len(providers) + 3))
     for provider in providers:
         for item in provider(query, limit=per_provider):
             url = item.get("url", "")
@@ -839,7 +905,7 @@ def render_short_job(job_id: str) -> None:
         groups = make_scene_groups(rows, duration)
         if not groups:
             groups = fallback_segments(script, duration)
-        update_job(job_id, progress=38, message="Wikimedia Commons stok görselleri lisanslarıyla aranıyor…")
+        update_job(job_id, progress=38, message="Google, Yandex, Bing ve açık web kaynaklarında görseller aranıyor…")
         source_records: list[dict[str, str]] = []
         scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
         user_images: list[Path] = []
