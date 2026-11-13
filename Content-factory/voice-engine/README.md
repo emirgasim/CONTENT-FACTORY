@@ -16,7 +16,7 @@ CPU-first MOSS-TTS-Nano ONNX voice cloning + pause trimming + short-form video r
 ## What it does
 
 - `POST /api/voice/preview`: generate a complete narration preview using a reference voice recording.
-- `POST /api/shorts/render`: after approval, trim long low-volume pauses, transcribe Turkish speech with Whisper, search Wikimedia Commons for license-filtered images and render a 9:16 MP4 with colorful animated graphic layouts.
+- `POST /api/shorts/render`: after approval, run the automatic editing agent, tighten long narration pauses, remap the edited audio timeline, research relevant stock/open-archive images, generate timed phrase captions, and render a 9:16 MP4.
 - `GET /api/jobs/{job_id}`: poll render status.
 - `GET /api/jobs/{job_id}/video`: download MP4.
 - `GET /api/jobs/{job_id}/audio`: download cleaned WAV.
@@ -54,6 +54,6 @@ A machine with Docker and enough RAM can run the same folder. Build and run the 
 
 - The engine uses Wikimedia Commons still images in this first renderer; video stock footage is not yet searched.
 - Visual layouts are selected from the transcript and include full-screen imagery, split layouts, collages and colorful infographic cards. This is an automated first pass, not editorially perfect AI film direction.
-- Whisper timestamps are segment-level, not exact forced word alignment.
+- The editing agent uses faster-whisper word timestamps to detect long pauses, preserves short natural pauses, trims long gaps to a short bridge, remaps speech times to the edited WAV, and generates phrase-synchronised ASS captions. Word-level alignment quality still depends on the ASR model and recording quality.
 - The output is 1080×1920, 25 fps, H.264/AAC. Actual duration follows the cleaned voice; the service does not cut spoken words to force a 40–45 second duration.
 - Model weights are downloaded at first run; they are not included in GitHub.
