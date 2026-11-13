@@ -979,10 +979,10 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
             "A candid photograph illustrating this specific moment: " + scene,
         ]
         negative_prompts = [
-            "A corporate logo, brand logo, or company identity graphic.",
-            "A promotional advertisement, sale banner, coupon, or product listing.",
-            "A diagram, chart, infographic, map, or screenshot.",
-            "An unrelated stock photograph that does not depict the described scene.",
+            "A corporate logo, brand logo, or company identity graphic unrelated to the described scene.",
+            "A promotional advertisement, sale banner, coupon, or product listing unrelated to the described scene.",
+            "An unrelated diagram, chart, infographic, map, or screenshot.",
+            "A stock photograph whose main subject is unrelated to the described scene.",
         ]
         prompts = positive_prompts + negative_prompts
         inputs = _CLIP_PROCESSOR(text=prompts, images=images, return_tensors="pt", padding=True, truncation=True, max_length=77)
