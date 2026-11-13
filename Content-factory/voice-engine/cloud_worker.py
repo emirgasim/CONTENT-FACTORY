@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT))
 import gateway
 from timeline_renderer import render_timeline_mp4
-from animated_scene_renderer import render_animated_video, infer_kind
+from animated_scene_renderer import render_animated_video, infer_kind, scene_concept, normalize_turkish_caption
 from urllib.parse import urlparse
 import ipaddress,socket
 CHUNK=16*1024*1024
@@ -268,6 +268,9 @@ def render_approved_timeline(job_id,meta,work,source,selections):
   "Kurgu stratejisi: "+str(edit_plan.get("strategy","unknown")),
   "Kurgu kesme sayısı: "+str(len(edit_plan.get("cuts",[]))),
   "Sahne sayısı: "+str(len(render_scenes)),
+  "Kanca: "+(hook_text or "Yok"),
+  "Altyazı düzeni: Türkçe yazım ve noktalama normalizasyonu",
+  "Her cümle için görsel eylem konsepti: Ayrı",
   "",
   "Kullanılan medya:"
  ]
@@ -341,6 +344,10 @@ def render_animated_timeline(meta,work,source):
   transcript=" ".join(str(row.get("text","")) for row in rows)
  if not groups:raise RuntimeError("Animasyon sahne zaman çizelgesi boş.")
  project_context=" ".join([str(meta.get("title","")),str(meta.get("hook","")),transcript[:2400]])
+ hook_text=normalize_turkish_caption(str(meta.get("hook","")).strip())
+ if not hook_text:
+  first_sentence=next((x.strip() for x in re.split(r"(?<=[.!?…])\\s+",transcript) if x.strip()),"")
+  hook_text=normalize_turkish_caption(first_sentence[:100])
  render_scenes=[]
  for index,group in enumerate(groups,1):
   scene_text=re.sub(r"\s+"," ",str(group.get("text","")).strip())
@@ -354,7 +361,8 @@ def render_animated_timeline(meta,work,source):
    "end":round(end,3),
    "duration":round(span,3),
    "text":scene_text[:220],
-   "visual_kind":infer_kind(scene_text,project_context)
+   "visual_kind":infer_kind(scene_text,project_context),
+   "visual_concept":scene_concept(scene_text)
   })
  if not render_scenes:raise RuntimeError("Animasyon için kullanılabilir sahne metni yok.")
  # Preserve the complete narration timeline exactly; any tiny grouping gaps are filled
@@ -367,7 +375,8 @@ def render_animated_timeline(meta,work,source):
   output_mp4_path=str(output),
   duration=duration,
   context=project_context,
-  width=1080,height=1920,fps=15
+  width=1080,height=1920,fps=15,
+  hook=hook_text
  )
  rendered_duration=gateway.probe_duration(output)
  out_width,out_height=gateway.probe_video_dimensions(output)
