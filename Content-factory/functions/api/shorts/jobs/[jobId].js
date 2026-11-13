@@ -28,6 +28,12 @@ async function removePrefix(kv, media, prefix) {
     if (page.keys.length) await Promise.all(page.keys.map(x => kv.delete(x.name)));
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
+  let mediaCursor;
+  do {
+    const page = await media.list({ prefix, cursor: mediaCursor, limit: 1000 });
+    if (page.objects.length) await Promise.all(page.objects.map(x => media.delete(x.key)));
+    mediaCursor = page.truncated ? page.cursor : undefined;
+  } while (mediaCursor);
 }
 
 function sanitizeTimeline(timeline, manifest) {
@@ -122,8 +128,8 @@ export async function onRequestGet({ request, env, params }) {
 }
 
 export async function onRequestDelete({ request, env, params }) {
-  const kv = env.SHORTS_TEMP;
-  if (!kv) return json({ error: "Geçici KV depolama bağlı değil." }, 503);
+  const kv = env.SHORTS_TEMP, media = env.SHORTS_MEDIA;
+  if (!kv || !media) return json({ error: "Geçici KV depolama bağlı değil." }, 503);
   const id = String(params.jobId || "");
   if (!await owns(kv, id, request)) return json({ error: "İş bulunamadı veya erişim anahtarı geçersiz." }, 404);
 
