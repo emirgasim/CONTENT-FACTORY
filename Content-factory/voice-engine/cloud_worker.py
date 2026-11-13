@@ -50,6 +50,9 @@ def render(job_id):
    if snapshot:
     allowed=("status","progress","message","error","duration","removed_silence","scene_count","source_count")
     cloud_state={k:snapshot[k] for k in allowed if k in snapshot}
+    # Keep API status vocabulary aligned with the local renderer.
+    if cloud_state.get("status")=="running":
+     cloud_state["status"]="processing"
     if cloud_state.get("status")=="completed":
      cloud_state.update({"status":"uploading","progress":96,"message":"MP4 ve kaynak dosyaları geçici depolamaya aktarılıyor."})
     update_status(job_id,**cloud_state)
