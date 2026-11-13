@@ -107,12 +107,14 @@ def build_scene_visual_query_plan(scene_text,context,meta):
  return target,queries
 
 
-def save_verified_review_options(job_id,index,ranked):
+def save_verified_review_options(job_id,index,ranked,local_cache=None):
  options=[]
  for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
   if source_info.get("visual_match_verified")!="true":continue
   candidate_id=str(len(options)+1)
   stored=upload_review_image(job_id,index+1,candidate_id,path)
+  if local_cache is not None:
+   local_cache[(index+1,candidate_id)]=Path(path)
   options.append({"id":candidate_id,"asset":f"candidate-{index+1}-{candidate_id}","score":round(float(score),4),"title":source_info.get("title","Image"),"source":source_info.get("source","Open web"),"author":source_info.get("author","Unknown"),"license":source_info.get("license","Check source terms"),"license_url":source_info.get("license_url",""),"page_url":source_info.get("page_url",""),"size":stored["size"],"parts":stored["parts"]})
  return options
 
@@ -336,7 +338,7 @@ def prepare_review(job_id,meta,work,source=None):
     if len(pairs)>=16:break
    if len(pairs)>=16:break
   ranked=gateway.rank_scene_images(visual_target,pairs)
-  options=save_verified_review_options(job_id,index,ranked)
+  options=save_verified_review_options(job_id,index,ranked,verified_local)
   if not options:
    # Fallback widens the subject context, not the visual acceptance rules.
    for q in queries[4:8]:
@@ -362,7 +364,10 @@ def prepare_review(job_id,meta,work,source=None):
     prior_scene=int(previous.get("index") or index)
     prior_id=str(prior.get("id") or "1")
     reused=work/("reused-verified-"+str(index+1)+".jpg")
-    get_input(job_id,"candidate-"+str(prior_scene)+"-"+prior_id,reused)
+    prior_path=verified_local.get((prior_scene,prior_id))
+    if prior_path is None or not Path(prior_path).is_file():
+     raise RuntimeError("Önceki sahnenin doğrulanmış fotoğrafı yerel çalışma alanında bulunamadı: "+str(prior_scene))
+    shutil.copy2(prior_path,reused)
     stored=upload_review_image(job_id,index+1,"1",reused)
     options=[{"id":"1","asset":f"candidate-{index+1}-1","score":prior.get("score",0),"title":str(prior.get("title","Verified project photo"))+" (contextual reuse)","source":prior.get("source","Open web"),"author":prior.get("author","Unknown"),"license":prior.get("license","Check source terms"),"license_url":prior.get("license_url",""),"page_url":prior.get("page_url",""),"size":stored["size"],"parts":stored["parts"],"reused_verified":True}]
     print("[visual-match] scene",index+1,"reuses prior verified project photo for connective narration beat",flush=True)
