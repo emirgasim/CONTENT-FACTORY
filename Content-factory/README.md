@@ -67,3 +67,5 @@ The Python render engine searches Wikimedia Commons, Openverse and Library of Co
 - Visual beats use the shared word-aligned planner (`max_words=7`, `max_seconds=2.8`) in both research and render phases so scene IDs and timestamps remain stable.
 - The review screen presents the scene text, time range, photo alternatives, provider, license and source-page link. One photo must be selected for every scene before the render workflow is dispatched.
 - If no verified candidate exists for a scene, research fails closed and asks for a retry; it does not silently substitute an unrelated graphic or generated image.
+
+<!-- Preview deployment refresh after Pages secret update. -->
