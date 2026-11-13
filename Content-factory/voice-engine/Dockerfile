@@ -23,6 +23,7 @@ RUN micromamba run -n content-factory pip install --no-cache-dir torch==2.7.0 to
     && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER gateway.py /app/gateway.py
+COPY --chown=$MAMBA_USER:$MAMBA_USER editing_agent.py /app/editing_agent.py
 COPY --chown=$MAMBA_USER:$MAMBA_USER start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
