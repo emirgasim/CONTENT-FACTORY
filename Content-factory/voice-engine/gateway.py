@@ -715,14 +715,31 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
 
     canvas.save(output, quality=94)
 
-def render_one_scene(canvas: Path, duration: float, output: Path) -> None:
-    frames = max(25, int(round(duration * 25)))
+def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
     zoom = "zoompan=z='min(zoom+0.00065,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=25"
-    result = run_command([
-        "ffmpeg", "-y", "-loop", "1", "-i", str(canvas), "-t", str(max(0.6, duration)),
-        "-vf", zoom + ",format=yuv420p", "-r", "25", "-an",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(output)
-    ], timeout=240)
+    if audio_path and audio_path.is_file():
+        # A slim animated waveform sits in the open top background band. Its shape is
+        # driven by the exact narration segment, while the color wash gently breathes.
+        graph = (
+            "[0:v]" + zoom + ",hue=h='6*sin(2*PI*t/2)':s='1.08+0.06*sin(2*PI*t/1.4)'[base];"
+            "[1:a]showwaves=s=1080x170:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
+            "format=rgba,colorkey=0x000000:0.08:0.05,"
+            "hue=h='42*sin(2*PI*t/2)'[wave];"
+            "[base][wave]overlay=0:12:shortest=1:format=auto,format=yuv420p[v]"
+        )
+        args = [
+            "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
+            "-ss", str(max(0.0, audio_start)), "-t", str(max(0.6, duration)), "-i", str(audio_path),
+            "-filter_complex", graph, "-map", "[v]", "-t", str(max(0.6, duration)),
+            "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(output)
+        ]
+    else:
+        args = [
+            "ffmpeg", "-y", "-loop", "1", "-i", str(canvas), "-t", str(max(0.6, duration)),
+            "-vf", zoom + ",hue=h='6*sin(2*PI*t/2)':s='1.08+0.06*sin(2*PI*t/1.4)',format=yuv420p",
+            "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(output)
+        ]
+    result = run_command(args, timeout=300)
     if result.returncode != 0 or not output.exists():
         raise RuntimeError("Sahne render edilemedi: " + result.stderr[-900:])
 
@@ -835,7 +852,7 @@ def render_short_job(job_id: str) -> None:
             canvas_path = work_dir / ("scene-" + str(idx + 1) + ".jpg")
             clip_path = work_dir / ("clip-" + str(idx + 1) + ".mp4")
             create_visual_canvas(group, scene_assets[idx], idx, canvas_path, title, hook)
-            render_one_scene(canvas_path, scene_duration, clip_path)
+            render_one_scene(canvas_path, scene_duration, clip_path, cleaned_audio, start)
             clips.append(clip_path)
             update_job(job_id, progress=70 + int(20 * (idx + 1) / max(1, len(groups))), message="Sahneler birleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
         list_file = work_dir / "clips.txt"
