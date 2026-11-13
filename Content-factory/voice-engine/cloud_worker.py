@@ -6,7 +6,6 @@ from requests.exceptions import RequestException
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT))
 import gateway
-from scene_segmentation import build_sentence_scenes
 from timeline_renderer import render_timeline_mp4
 from urllib.parse import urlparse
 import ipaddress,socket
@@ -51,12 +50,23 @@ def upload_review_image(job_id,scene,candidate,path):
  return {"parts":parts,"size":size,"key":f"jobs/{job_id}/review/scene-{scene}/candidate-{candidate}"}
 
 def make_sentence_groups(rows,duration):
- word_rows=[]
- for row in rows or []:
-  token=re.sub(r"\s+"," ",str(row.get("text","")).strip())
-  if token:
-   word_rows.append({"word":token,"start":float(row.get("start",0.0)),"end":float(row.get("end",0.0))})
- return [scene.to_dict() for scene in build_sentence_scenes(word_rows,total_duration=duration)]
+ # Identical word-aligned visual beats are used for research and final render.
+ # At 2.8 seconds maximum, a 40–45s narration normally yields about 15–16 shots.
+ beats=gateway.build_visual_beats(rows,duration,max_words=7,max_seconds=2.8)
+ scenes=[]
+ for index,beat in enumerate(beats,1):
+  start=max(0.0,float(beat.get("start",0.0)))
+  end=max(start+0.08,min(float(duration),float(beat.get("end",start+0.5))))
+  text=re.sub(r"\\s+"," ",str(beat.get("text","")).strip())
+  if text:scenes.append({"index":index,"start":round(start,3),"end":round(end,3),"duration":round(end-start,3),"text":text})
+ return scenes
+
+def require_short_duration(duration,stage):
+ if duration<40.0 or duration>45.0:
+  raise RuntimeError(
+   f"{stage}: temizlenmiş ses {duration:.1f} saniye. Bu proje için seslendirme 40–45 saniye olmalı. "
+   "Metni veya seslendirmeyi bu aralığa göre düzenleyip yeniden yükle; sistem konuşmayı keserek süreye zorlamaz."
+  )
 
 def download_external_image(url,destination):
  parsed=urlparse(url)
@@ -95,7 +105,7 @@ def render_approved_timeline(job_id,meta,work,source,selections):
  gateway.render_edited_audio(source,cleaned,edit_plan)
  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
  duration=gateway.probe_duration(cleaned)
- if duration<8:raise RuntimeError("Ses çok kısa. En az 8 saniyelik seslendirme gerekli.")
+ require_short_duration(duration,"Render öncesi kalite kontrolü")
  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için cümle tabanlı sahne zaman çizelgesi oluşturulamadı.")
  by_index={int(g["index"]):g for g in groups}
@@ -213,6 +223,7 @@ def prepare_review(job_id,meta,work,source):
  gateway.render_edited_audio(source,cleaned,edit_plan)
  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
  duration=gateway.probe_duration(cleaned)
+ require_short_duration(duration,"Görsel araştırması")
  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için sahne zaman çizelgesi oluşturulamadı.")
  manifest={"hook":meta.get("hook",""),"duration":round(duration,2),"scenes":[]}
