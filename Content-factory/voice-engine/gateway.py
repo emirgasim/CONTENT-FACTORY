@@ -943,6 +943,10 @@ _CLIP_LOCK = threading.Lock()
 
 
 def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]]) -> list[tuple[float, tuple[Path, dict[str, str]]]]:
+    """
+    Strict visual verification. Metadata overlap is never a substitute for
+    looking at the pixels: if CLIP is unavailable, no web image is approved.
+    """
     if not candidates:
         return []
     try:
@@ -955,6 +959,7 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
                 _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
                 _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
                 _CLIP_MODEL.eval()
+
         images = []
         valid = []
         for pair in candidates:
@@ -966,10 +971,20 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
                 continue
         if not valid:
             return []
-        prompts = [
-            "A real photograph illustrating this scene: " + str(query)[:400],
-            "A documentary image showing " + str(query)[:400],
+
+        scene = re.sub(r"\s+", " ", str(query or "")).strip()[:260]
+        positive_prompts = [
+            "A real documentary photograph showing this exact scene: " + scene,
+            "A real-life news photograph whose main subject is: " + scene,
+            "A candid photograph illustrating this specific moment: " + scene,
         ]
+        negative_prompts = [
+            "A corporate logo, brand logo, or company identity graphic.",
+            "A promotional advertisement, sale banner, coupon, or product listing.",
+            "A diagram, chart, infographic, map, or screenshot.",
+            "An unrelated stock photograph that does not depict the described scene.",
+        ]
+        prompts = positive_prompts + negative_prompts
         inputs = _CLIP_PROCESSOR(text=prompts, images=images, return_tensors="pt", padding=True)
         with torch.inference_mode():
             outputs = _CLIP_MODEL(**inputs)
@@ -977,17 +992,36 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
             text_features = outputs.text_embeds
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-            similarities = (image_features @ text_features.T).max(dim=1).values.cpu().tolist()
-        ranked = sorted(zip(similarities, valid), key=lambda item: item[0], reverse=True)
-        print("[visual-match] CLIP scores:", [(round(float(score), 3), pair[1].get("title", "")[:70]) for score, pair in ranked[:5]])
-        return [(float(score), pair) for score, pair in ranked]
-    except Exception as exc:
-        print("[visual-match] local CLIP unavailable; using conservative metadata ranking:", type(exc).__name__, str(exc)[:240])
-        return sorted(
-            [(visual_relevance_score(query, pair[1]), pair) for pair in candidates],
-            key=lambda item: item[0],
-            reverse=True,
+            similarities = image_features @ text_features.T
+            positive_scores = similarities[:, :len(positive_prompts)].max(dim=1).values.cpu().tolist()
+            negative_scores = similarities[:, len(positive_prompts):].max(dim=1).values.cpu().tolist()
+
+        minimum_score = float(os.getenv("VISUAL_MATCH_MIN_SCORE", "0.25"))
+        minimum_margin = float(os.getenv("VISUAL_MATCH_MIN_MARGIN", "0.025"))
+        ranked = []
+        for positive, negative, pair in zip(positive_scores, negative_scores, valid):
+            margin = float(positive) - float(negative)
+            verified = float(positive) >= minimum_score and margin >= minimum_margin
+            pair[1]["visual_match_score"] = f"{float(positive):.4f}"
+            pair[1]["visual_match_margin"] = f"{margin:.4f}"
+            pair[1]["visual_match_verified"] = "true" if verified else "false"
+            if verified:
+                rank_score = float(positive) + min(margin, 0.15) * 0.5
+                ranked.append((rank_score, pair))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        print(
+            "[visual-match] strict CLIP verification:",
+            "approved=", len(ranked), "/", len(valid),
+            "thresholds=", minimum_score, minimum_margin,
+            "top=", [(round(float(score), 3), pair[1].get("title", "")[:70]) for score, pair in ranked[:5]],
         )
+        return ranked
+    except Exception as exc:
+        print(
+            "[visual-match] CLIP unavailable; refusing unverified web images:",
+            type(exc).__name__, str(exc)[:300],
+        )
+        return []
 
 def load_font(size: int, bold: bool = True):
     candidates = [
@@ -1260,51 +1294,37 @@ def render_short_job(job_id: str) -> None:
                 except Exception:
                     pass
 
-        # Build a topic-specific reserve before rendering individual scenes.
-        # This prevents a single weak scene query from aborting the entire video.
+        # Every scene must obtain and pass its own visual match. A video-wide
+        # topic cache is intentionally not used as a fallback for unrelated beats.
         seen_asset_urls: set[str] = set()
-        downloaded_assets: list[tuple[Path, dict[str, str]]] = []
         query_cache: dict[str, list[dict[str, str]]] = {}
-        topic_queries = visual_search_queries(title, hook, script)
-        topic_anchor = english_visual_query(title + " " + hook)
-        if topic_anchor and topic_anchor not in topic_queries:
-            topic_queries.insert(0, topic_anchor)
-        if not topic_queries:
-            topic_queries = [extract_keywords(title + " " + hook + " " + script[:300])]
-
-        for topic_query in topic_queries[:3]:
-            if not topic_query:
-                continue
-            candidates = search_public_assets(topic_query, limit=36)
-            query_cache[topic_query] = candidates
-            for candidate in candidates:
-                url = str(candidate.get("url") or "").strip()
-                if not url or url in seen_asset_urls:
-                    continue
-                asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
-                if not asset_path:
-                    continue
-                seen_asset_urls.add(url)
-                source_records.append(candidate)
-                downloaded_assets.append((asset_path, candidate))
-                if len(downloaded_assets) >= max(12, min(36, len(groups) * 2)):
-                    break
-            if len(downloaded_assets) >= max(12, min(36, len(groups) * 2)):
-                break
 
         for idx, group in enumerate(groups):
             scene_text = re.sub(r"\s+", " ", str(group.get("text", "")).strip())
-            scene_terms = translate_visual_query(scene_text) or english_visual_query(scene_text) or extract_keywords(scene_text)
-            # Keep each search focused on the actual narration beat. Retry with
-            # a simpler query if the first result set is empty or irrelevant.
+            previous_text = str(groups[idx - 1].get("text", "")).strip() if idx > 0 else ""
+            next_text = str(groups[idx + 1].get("text", "")).strip() if idx + 1 < len(groups) else ""
+            visual_brief = (
+                "Story topic: " + str(title)[:100]
+                + ". Exact narrated scene: " + scene_text[:180]
+                + (". Nearby context: " + previous_text[:70] + " " + next_text[:70] if previous_text or next_text else "")
+            )[:420]
+
+            # Search the story topic AND the exact beat first. Previously the
+            # generic beat query often returned three unrelated results and
+            # stopped the search before the story-specific query was attempted.
             query_variants = []
-            for query in (scene_terms, translate_visual_query(title + " " + scene_text), english_visual_query(scene_text), extract_keywords(scene_text)):
+            for query in (
+                translate_visual_query(str(title) + " " + scene_text),
+                translate_visual_query(scene_text),
+                english_visual_query(str(title) + " " + scene_text),
+                extract_keywords(str(title) + " " + scene_text),
+            ):
                 query = re.sub(r"\s+", " ", str(query or "")).strip()
                 if query and query.lower() not in {x.lower() for x in query_variants}:
-                    query_variants.append(query[:160])
+                    query_variants.append(query[:180])
 
             scene_pairs: list[tuple[Path, dict[str, str]]] = []
-            for query_attempt, scene_query in enumerate(query_variants[:3]):
+            for query_attempt, scene_query in enumerate(query_variants[:4]):
                 cache_key = re.sub(r"\s+", " ", scene_query.lower()).strip()
                 candidates = query_cache.get(cache_key)
                 if candidates is None:
@@ -1315,48 +1335,34 @@ def render_short_job(job_id: str) -> None:
                         print("[visual-search] scene query failed:", idx + 1, type(search_error).__name__, str(search_error)[:180])
                         candidates = []
                         query_cache[cache_key] = []
+
                 for candidate in candidates[:16]:
                     url = str(candidate.get("url") or "").strip()
                     if not url or url in seen_asset_urls:
                         continue
-                    asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
+                    asset_path = download_image_asset(candidate, work_dir, len(source_records) + len(scene_pairs) + 1)
                     if not asset_path:
                         continue
                     seen_asset_urls.add(url)
-                    source_records.append(candidate)
-                    pair = (asset_path, candidate)
-                    downloaded_assets.append(pair)
-                    scene_pairs.append(pair)
-                if len(scene_pairs) >= 3:
-                    break
-                print("[visual-search] retrying scene with alternate query:", idx + 1, query_attempt + 1, scene_query)
-
-            # Rank only images discovered for this beat. Do not pull a random
-            # image from the video-wide reserve when scene relevance is weak.
-            selected: tuple[Path, dict[str, str]] | None = None
-            ranked_scene = rank_scene_images(scene_terms, scene_pairs)
-            if not ranked_scene:
-                # A broader topic result may be used only if the local vision
-                # model confirms it depicts this exact beat; never random-pick.
-                reserve_candidates = [pair for pair in downloaded_assets if pair not in scene_pairs]
-                ranked_scene = rank_scene_images(scene_terms, reserve_candidates)
-            if ranked_scene:
-                # Never reuse the same downloaded photograph in two scenes.
-                # Try the next semantically ranked candidate instead.
-                for score, pair in ranked_scene:
-                    min_score = 0.18 if isinstance(score, float) and score < 1 else 4
-                    if score >= min_score and pair[0] not in used_scene_paths:
-                        selected = pair
-                        used_scene_paths.add(pair[0])
+                    scene_pairs.append((asset_path, candidate))
+                    if len(scene_pairs) >= 18:
                         break
-                if selected is None:
-                    best_score = ranked_scene[0][0]
-                    print("[visual-match] no unused relevant candidate passed threshold:", idx + 1, round(float(best_score), 3))
-            else:
-                selected = None
+                if len(scene_pairs) >= 18:
+                    break
+                print("[visual-search] trying next story-specific query:", idx + 1, query_attempt + 1, scene_query)
 
-            # An explicitly uploaded reference image is allowed as a fallback;
-            # otherwise create a scene-specific graphic, never an unrelated photo.
+            # Only a high-confidence pixel-level scene match is eligible.
+            # No general-topic reserve and no keyword-overlap fallback.
+            selected: tuple[Path, dict[str, str]] | None = None
+            ranked_scene = rank_scene_images(visual_brief, scene_pairs)
+            for score, pair in ranked_scene:
+                if pair[0] not in used_scene_paths and pair[1].get("visual_match_verified") == "true":
+                    selected = pair
+                    used_scene_paths.add(pair[0])
+                    break
+
+            # User-provided photos are an explicit override; generated text cards
+            # and arbitrary external search results are never used as substitutes.
             if selected is None and user_images:
                 own_path = user_images[idx % len(user_images)]
                 selected = (own_path, {
@@ -1368,33 +1374,36 @@ def render_short_job(job_id: str) -> None:
                     "url": "",
                     "source": "User upload",
                 })
-                source_records.append(selected[1])
 
             if selected is None:
-                selected = create_fallback_visual_asset(scene_text, work_dir, idx + 1)
-                source_records.append(selected[1])
-                print("[visual-search] no relevant photo; using scene title card:", idx + 1, scene_text[:140])
+                raise RuntimeError(
+                    "Sahne " + str(idx + 1) + "/" + str(len(groups))
+                    + " için anlatımla görsel olarak doğrulanmış fotoğraf bulunamadı: "
+                    + scene_text[:180]
+                    + ". Bu nedenle alakasız görselle video üretimi durduruldu."
+                )
 
+            source_records.append(selected[1])
             scene_assets.append([selected])
             progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
             update_job(
                 job_id,
                 progress=progress,
-                message="Sahne görselleri doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
+                message="Sahneler görsel olarak doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
             )
 
-        web_photo_count = sum(
+        verified_scene_count = sum(
             1 for assets in scene_assets
-            if assets and assets[0][1].get("source") != "Content Factory"
-            and assets[0][1].get("source") != "User upload"
+            if assets and (
+                assets[0][1].get("visual_match_verified") == "true"
+                or assets[0][1].get("source") == "User upload"
+            )
         )
-        visual_coverage = web_photo_count / max(1, len(scene_assets))
-        if visual_coverage < 0.65:
+        if verified_scene_count != len(scene_assets):
             raise RuntimeError(
-                "Görsel kalite kontrolü başarısız: sahnelerin yalnızca %"
-                + str(round(visual_coverage * 100))
-                + " bölümüne uygun internet fotoğrafı bulundu. Alakasız veya yazı kartlarından oluşan video teslim edilmedi. "
-                  "Arama sağlayıcılarını ve sahne sorgularını kontrol edin."
+                "Görsel kalite kontrolü başarısız: "
+                + str(verified_scene_count) + "/" + str(len(scene_assets))
+                + " sahne doğrulandı. Alakasız fotoğraf veya yazı kartı içeren video teslim edilmedi."
             )
 
         clips = []
