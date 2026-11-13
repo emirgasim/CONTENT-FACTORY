@@ -1122,11 +1122,12 @@ def render_short_job(job_id: str) -> None:
                     "  Sanatçı: " + (item.get("author") or "Belirtilmemiş"),
                     "  Lisans: " + (item.get("license") or "Belirtilmemiş"),
                     "  Lisans bağlantısı: " + (item.get("license_url") or "Belirtilmemiş"),
-                    "  Kaynak: " + (item.get("page_url") or ""),
+                    "  Görsel adresi: " + (item.get("url") or ""),
+                    "  Kaynak sayfası: " + (item.get("page_url") or ""),
                     "",
                 ])
         else:
-            credits.append("Bu render sırasında uygun lisanslı Wikimedia Commons görseli bulunamadı; ilgili sahnelerde özgün grafik kompozisyonları kullanıldı.")
+            credits.append("Bu render sırasında harici görsel kaynağı kullanılamadı.")
         credits.extend([
             "",
             "Ses motoru: MOSS-TTS-Nano (ONNX CPU). Model ve tokenizer lisans/atıf bilgileri için:",
@@ -1134,7 +1135,7 @@ def render_short_job(job_id: str) -> None:
             "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
             "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
             "",
-            "Not: Görseller Wikimedia Commons, Openverse ve Library of Congress gibi kamuya açık koleksiyonlardan aranır. Her varlığın kendi lisans koşulları yukarıda listelenir.",
+            "Not: Görseller çok kaynaklı araştırma motoruyla stok servisleri, açık arşivler ve web görsel indekslerinden aranır. Hak bilgisi bulunmayan öğeler ayrıca belirtilir; internette bulunması tek başına yeniden kullanım izni vermez. Yayından önce ilgili kaynağın güncel koşullarını doğrulayın.",
         ])
         (work_dir / "sources-and-licenses.txt").write_text("\n".join(credits), encoding="utf-8")
         update_job(
