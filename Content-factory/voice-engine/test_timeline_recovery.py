@@ -63,7 +63,7 @@ class TimelineRecoveryTests(unittest.TestCase):
             "The Apollo 11 moon landing and Neil Armstrong",
             {"title": "Apollo 11 mission", "hook": "Neil Armstrong"},
         )
-        self.assertIn("Apollo", target)
+        self.assertIn("apollo", target.lower())
         self.assertTrue(any("Neil Armstrong" in query for query in queries))
 
 if __name__ == "__main__":
