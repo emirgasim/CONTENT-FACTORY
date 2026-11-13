@@ -1,11 +1,16 @@
+import shutil
+import struct
+import subprocess
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from editing_agent import (
     build_edit_plan,
     build_visual_beats,
     remap_rows_to_edited_timeline,
+    render_edited_audio,
     write_ass_subtitles,
 )
 
@@ -52,6 +57,49 @@ class EditingAgentTests(unittest.TestCase):
             self.assertIn("Dialogue:", rendered)
             self.assertIn("hikâye.", rendered)
             self.assertIn("DejaVu Sans,64", rendered)
+
+    def test_ffmpeg_audio_edit_and_subtitle_filter_smoke(self):
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            self.skipTest("FFmpeg is not installed on this runner.")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.wav"
+            edited = root / "edited.wav"
+            captions = root / "captions.ass"
+            rate = 16000
+            frames = bytearray()
+            for sample in range(rate * 3):
+                moment = sample / rate
+                active = 0.15 <= moment <= 0.78 or 1.80 <= moment <= 2.48
+                frames.extend(struct.pack("<h", 7000 if active else 0))
+            with wave.open(str(source), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(rate)
+                wav.writeframes(bytes(frames))
+
+            plan = build_edit_plan(self.words, 3.0)
+            render_edited_audio(source, edited, plan)
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(edited)],
+                capture_output=True, text=True, check=True,
+            )
+            edited_duration = float(probe.stdout.strip())
+            self.assertAlmostEqual(edited_duration, plan["output_duration"], delta=0.06)
+
+            beats = build_visual_beats(
+                remap_rows_to_edited_timeline(self.words, plan),
+                plan["output_duration"],
+            )
+            write_ass_subtitles(beats, captions)
+            smoke = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "color=c=black:s=320x568:d=1.6:r=10",
+                 "-vf", "subtitles=" + str(captions), "-f", "null", "-"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(smoke.returncode, 0, smoke.stderr[-1000:])
 
 
 if __name__ == "__main__":
