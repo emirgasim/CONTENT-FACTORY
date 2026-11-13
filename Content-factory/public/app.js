@@ -55,7 +55,7 @@ function showVisualReview(job){
  $("#visualScenes").innerHTML=review.scenes.map(scene=>{
   const options=scene.options.map((option,index)=>{
    const asset=encodeURIComponent(option.asset);
-   const url="/api/shorts/jobs/"+encodeURIComponent(state.jobId)+"/"+asset;
+   const url="/api/shorts/jobs/"+encodeURIComponent(state.jobId)+"/"+asset+"?token="+encodeURIComponent(state.jobToken);
    return '<label style="display:inline-block;vertical-align:top;width:min(46%,240px);margin:6px;padding:8px;border:1px solid #777;border-radius:12px;cursor:pointer"><input type="radio" name="scene-'+scene.index+'" value="'+escHtml(option.id)+'" '+(index===0?"checked":"")+'><img src="'+url+'" alt="Sahne görseli" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;margin-top:6px"><strong style="display:block;font-size:13px;margin-top:5px">'+escHtml(option.title)+'</strong><small>'+escHtml(option.source)+' · '+escHtml(option.license)+'</small>'+(option.page_url?'<br><a href="'+escHtml(option.page_url)+'" target="_blank" rel="noopener">Kaynağı aç</a>':"")+'</label>';
   }).join("");
   return '<section style="padding:14px 0;border-bottom:1px solid #777"><strong>Sahne '+scene.index+' · '+Number(scene.start).toFixed(1)+'–'+Number(scene.end).toFixed(1)+' sn</strong><p>'+escHtml(scene.text)+'</p><div>'+options+'</div></section>';
