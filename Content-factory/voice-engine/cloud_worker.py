@@ -91,7 +91,8 @@ def prepare_review(job_id,meta,work,source):
   manifest["scenes"].append({"index":index+1,"start":round(float(group.get("start",0)),2),"end":round(float(group.get("end",0)),2),"text":scene_text,"options":options})
   update_status(job_id,status="processing",progress=15+int(65*(index+1)/len(groups)),message="Görseller araştırılıyor ("+str(index+1)+"/"+str(len(groups))+")")
  request_json("PUT",f"{api_base()}/{job_id}",json={"type":"review","manifest":manifest})
- if not update_status(job_id,status="awaiting_approval",progress=85,message="Görseller hazır. Her sahneyi inceleyip onayla.",scene_count=len(groups)):\n  raise RuntimeError("Görsel onay listesi kaydedildi ancak iş durumu güncellenemedi.")
+ if not update_status(job_id,status="awaiting_approval",progress=85,message="Görseller hazır. Her sahneyi inceleyip onayla.",scene_count=len(groups)):
+  raise RuntimeError("Görsel onay listesi kaydedildi ancak iş durumu güncellenemedi.")
 def update_status(job_id,**values):
  try:
   request_json("PUT",f"{api_base()}/{job_id}",json=values)
