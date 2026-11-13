@@ -1224,32 +1224,51 @@ def render_short_job(job_id: str) -> None:
             scene_query = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
             selected: tuple[Path, dict[str, str]] | None = None
 
-            # Reuse the pre-fetched video-topic pool and rank it for this beat.
-            # Do not launch a fresh network search for every sentence: that made
-            # 20+ scene videos slow and brittle when public APIs were unavailable.
-            if downloaded_assets:
-                scene_query_en = scene_query or scene_terms
-                topic_query_en = topic_anchor
-                scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_query_en or "").lower()))
-                ranked_pool = sorted(
-                    downloaded_assets,
-                    key=lambda pair: (
-                        visual_relevance_score(scene_query_en, pair[1]) * 3
-                        + visual_relevance_score(scene_terms, pair[1])
-                        + visual_relevance_score(topic_query_en, pair[1])
-                        + len(scene_tokens & set(re.findall(
-                            r"[a-z0-9]+",
-                            " ".join([
-                                str(pair[1].get("title", "")),
-                                str(pair[1].get("page_url", "")),
-                            ]).lower(),
-                        )))
-                    ),
-                    reverse=True,
-                )
-                used_paths = {item[0][0] for item in scene_assets}
+            # Search the live web for this narration beat, not only for the
+            # overall video topic. Cache repeated queries to avoid duplicate API
+            # calls; keep the broader topic pool as a secondary candidate source.
+            scene_query_en = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
+            if scene_query_en:
+                normalized_query = re.sub(r"\\s+", " ", scene_query_en.lower()).strip()
+                if normalized_query not in query_cache:
+                    try:
+                        query_cache[normalized_query] = search_public_assets(scene_query_en, limit=18)
+                    except Exception as search_error:
+                        print("[visual-search] scene query failed:", idx + 1, type(search_error).__name__, str(search_error)[:180])
+                        query_cache[normalized_query] = []
+                scene_candidates = query_cache.get(normalized_query, [])
+                for candidate in scene_candidates[:12]:
+                    url = str(candidate.get("url") or "").strip()
+                    if not url or url in seen_asset_urls:
+                        continue
+                    asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
+                    if not asset_path:
+                        continue
+                    seen_asset_urls.add(url)
+                    source_records.append(candidate)
+                    downloaded_assets.append((asset_path, candidate))
+                    if len(downloaded_assets) >= max(24, min(72, len(groups) * 3)):
+                        break
+
+            # Rank scene-specific live results first, then use the video-topic
+            # reserve only when the scene search did not return a credible match.
+            scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_terms or "").lower()))
+            ranked_pool = sorted(
+                downloaded_assets,
+                key=lambda pair: (
+                    visual_relevance_score(scene_terms, pair[1]) * 4
+                    + visual_relevance_score(topic_anchor, pair[1])
+                    + len(scene_tokens & set(re.findall(
+                        r"[a-z0-9]+",
+                        " ".join([str(pair[1].get("title", "")), str(pair[1].get("page_url", ""))]).lower(),
+                    )))
+                ),
+                reverse=True,
+            )
+            used_paths = {item[0][0] for item in scene_assets}
+            if ranked_pool:
                 selected = next((pair for pair in ranked_pool if pair[0] not in used_paths), None)
-                if selected is None and ranked_pool:
+                if selected is None:
                     selected = ranked_pool[idx % len(ranked_pool)]
 
             # User-supplied reference images remain the final intentional fallback.
