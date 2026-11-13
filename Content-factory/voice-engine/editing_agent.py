@@ -308,12 +308,11 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,DejaVu Sans, sixty_placeholder,\u0026H00FFFFFF,\u0026H0000FFFF,\u0026H0010141E,\u0026H90000000,-1,0,0,0,100,100,0,0,1,5,1,2,72,72,155,1
+Style: Default,DejaVu Sans,64,\u0026H00FFFFFF,\u0026H0000FFFF,\u0026H0010141E,\u0026H90000000,-1,0,0,0,100,100,0,0,1,5,1,2,72,72,155,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    header = header.replace("sixty_placeholder", " sixty_placeholder".strip()).replace("sixty_placeholder", "64")
     events: list[str] = []
     for beat in beats:
         text = re.sub(r"\s+", " ", str(beat.get("text", "")).strip())
