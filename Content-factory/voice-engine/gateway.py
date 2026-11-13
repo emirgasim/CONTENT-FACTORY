@@ -1316,12 +1316,13 @@ def render_short_job(job_id: str) -> None:
 
             # Rank only images discovered for this beat. Do not pull a random
             # image from the video-wide reserve when scene relevance is weak.
+            selected: tuple[Path, dict[str, str]] | None = None
             ranked_scene = rank_scene_images(scene_text, scene_pairs)
             if ranked_scene:
                 best_score, best_pair = ranked_scene[0]
                 # CLIP cosine similarity is normally in this range; lexical
                 # fallback scores are integer metadata overlap values.
-                min_score = 0.18 if isinstance(best_score, float) and best_score < 1 else 1
+                min_score = 0.18 if isinstance(best_score, float) and best_score < 1 else 4
                 if best_score >= min_score:
                     selected = best_pair
                 else:
