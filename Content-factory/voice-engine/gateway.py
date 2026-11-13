@@ -339,45 +339,32 @@ def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_second
     if not groups:
         return fallback_segments("", duration)
 
-    # Merge tiny beats into a neighbour rather than flashing captions too quickly.
-    merged: list[dict[str, Any]] = []
-    for group in groups:
-        item = {"start": float(group["start"]), "end": float(group["end"]), "text": str(group["text"]).strip()}
-        if merged and (item["start"] - item["end"] < 0.0001):
-            item["start"] = merged[-1]["end"]
-        span = max(0.0, item["end"] - item["start"])
-        if merged and span < minimum_beat:
-            previous = merged[-1]
-            previous_span = previous["end"] - previous["start"]
-            if previous_span + span <= maximum_beat:
-                previous["end"] = item["end"]
-                previous["text"] = (previous["text"] + " " + item["text"]).strip()
-                continue
-        merged.append(item)
+    # Merge tiny beats and cap the number of cards so every caption has enough screen time.
+    max_groups = max(1, int(duration / minimum_beat))
+    while len(groups) > max_groups:
+        spans = [max(0.0, float(g["end"]) - float(g["start"])) for g in groups]
+        index = min(range(len(groups)), key=lambda i: spans[i])
+        if index == 0:
+            neighbour = 1
+        elif index == len(groups) - 1:
+            neighbour = index - 1
+        else:
+            left_gap = abs(spans[index - 1] - spans[index])
+            right_gap = abs(spans[index + 1] - spans[index])
+            neighbour = index - 1 if left_gap <= right_gap else index + 1
+        left, right = sorted((index, neighbour))
+        groups[left]["text"] = (str(groups[left]["text"]).strip() + " " + str(groups[right]["text"]).strip()).strip()
+        groups[left]["end"] = groups[right]["end"]
+        groups.pop(right)
 
-    # Re-time phrase beats smoothly over the real narration duration. Word count
-    # influences pacing, while a soft floor prevents abrupt sub-second flashes.
-    if len(merged) > 1:
-        weights = [max(1.0, len(g["text"].split()) ** 0.82) for g in merged]
-        raw = [max(0.08, g["end"] - g["start"]) for g in merged]
-        weights = [0.65 * w + 0.35 * (span / max(0.01, duration) * sum(weights)) for w, span in zip(weights, raw)]
-        total = sum(weights)
-        cursor = 0.0
-        for index, group in enumerate(merged):
-            group["start"] = cursor
-            cursor = duration if index == len(merged) - 1 else cursor + duration * weights[index] / total
-            group["end"] = cursor
-    else:
-        merged[0]["start"], merged[0]["end"] = 0.0, duration
-
-    # Keep the final timeline contiguous and guarantee readable holds.
-    for index, group in enumerate(merged):
-        group["start"] = 0.0 if index == 0 else merged[index - 1]["end"]
-        group["end"] = duration if index == len(merged) - 1 else max(group["start"] + minimum_beat, min(duration, group["end"]))
-    if len(merged) > 1 and merged[-1]["end"] - merged[-1]["start"] < minimum_beat:
-        merged[-2]["end"] = duration
-        merged.pop()
-    return merged
+    weights = [max(1.0, len(str(g["text"]).split()) ** 0.82) for g in groups]
+    total_weight = sum(weights)
+    cursor = 0.0
+    for index, group in enumerate(groups):
+        group["start"] = cursor
+        cursor = duration if index == len(groups) - 1 else cursor + duration * weights[index] / total_weight
+        group["end"] = cursor
+    return groups
 
 def plain_text(value: Any) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
