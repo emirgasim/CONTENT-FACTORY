@@ -1,0 +1,12 @@
+const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"no-store"}});
+function authorized(request,env){const secret=env.CF_WORKER_SECRET||"";return !!secret&&request.headers.get("X-Factory-Worker-Secret")===secret;}
+function validId(id){return /^[a-f0-9]{32}$/.test(id);}
+async function getJob({request,env,params}){if(!authorized(request,env))return json({error:"Unauthorized"},401);const kv=env.SHORTS_TEMP,id=String(params.jobId||"");if(!kv||!validId(id))return json({error:"Invalid job"},404);const meta=await kv.get("jobs/"+id+"/input.json","json");if(!meta)return json({error:"Job expired"},404);return json(meta);}
+async function putJob({request,env,params}){if(!authorized(request,env))return json({error:"Unauthorized"},401);const kv=env.SHORTS_TEMP,id=String(params.jobId||"");if(!kv||!validId(id))return json({error:"Invalid job"},404);let body;try{body=await request.json()}catch{return json({error:"Invalid JSON"},400);}if(!body||typeof body!=="object")return json({error:"Invalid payload"},400);const ttl=86400;if(body.type==="manifest"){await kv.put("jobs/"+id+"/output/manifest.json",JSON.stringify(body.manifest||{}),{expirationTtl:ttl});return json({ok:true});}if(body.type==="review"){if(!body.manifest||!Array.isArray(body.manifest.scenes)||!body.manifest.scenes.length)return json({error:"Invalid review manifest"},400);await kv.put("jobs/"+id+"/review/manifest.json",JSON.stringify(body.manifest),{expirationTtl:ttl});return json({ok:true});}const allowed=new Set(["queued","processing","uploading","awaiting_approval","completed","failed"]);if(!allowed.has(body.status))return json({error:"Invalid status"},400);const current=await kv.get("jobs/"+id+"/status.json","json");if(!current)return json({error:"Job expired"},404);const next={...current,...body,job_id:id,updated_at:new Date().toISOString()};await kv.put("jobs/"+id+"/status.json",JSON.stringify(next),{expirationTtl:ttl});return json({ok:true});}
+// A single method dispatcher avoids platform-specific method-handler routing
+// mismatches: both the startup heartbeat and the Python worker use this route.
+export async function onRequest(context){const method=context.request.method.toUpperCase();if(method==="GET")return getJob(context);if(method==="PUT"||method==="POST")return putJob(context);return json({error:"Method not allowed"},405);}
+
+export async function onRequestGet(context){return getJob(context);}
+export async function onRequestPut(context){return putJob(context);}
+export async function onRequestPost(context){return putJob(context);}
