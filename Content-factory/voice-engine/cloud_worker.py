@@ -64,8 +64,8 @@ def prepare_review(job_id,meta,work,source):
   # Keep the visual target short and entity-focused: CLIP has a 77-token
   # text window, so long narration/context prompts can truncate the actual subject.
   visual_target=gateway.english_visual_query(scene_text)
-  visual_target=re.sub(r"\\bsilvestre\\b","Sylvester",visual_target,flags=re.I)
-  visual_target=re.sub(r"\\bsylvester\\b(?!\\s+stallone)","Sylvester Stallone",visual_target,flags=re.I)
+  visual_target=re.sub(r"\bsilvestre\b","Sylvester",visual_target,flags=re.I)
+  visual_target=re.sub(r"\bsylvester\b(?!\s+stallone)","Sylvester Stallone",visual_target,flags=re.I)
   lower_scene=scene_text.casefold()
   if "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
    visual_target="Sylvester Stallone arriving; Sylvester Stallone, Rocky actor"
