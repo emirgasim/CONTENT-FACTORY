@@ -37,6 +37,10 @@ jobs:
           node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId]/[asset].js'
           node --input-type=module --check < 'Content-factory/functions/api/internal/shorts/jobs/[jobId].js'
           node --input-type=module --check < 'Content-factory/functions/api/internal/shorts/jobs/[jobId]/[asset].js'
+      - name: Install FFmpeg for renderer smoke tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
       - name: Check Python engine syntax and editing-agent tests
         run: |
           python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py Content-factory/voice-engine/editing_agent.py Content-factory/voice-engine/test_editing_agent.py
