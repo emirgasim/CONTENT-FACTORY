@@ -714,6 +714,9 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
         search_pexels, search_pixabay, search_unsplash, search_flickr,
         search_openverse, search_commons, search_library_of_congress,
         search_nasa, search_europeana, search_duckduckgo_images,
+        lambda q, n: search_web_image_engine("Google Images", q, n),
+        lambda q, n: search_web_image_engine("Bing Images", q, n),
+        lambda q, n: search_web_image_engine("Yandex Images", q, n),
     ]
     results: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -1232,6 +1235,7 @@ def render_short_job(job_id: str) -> None:
         update_job(job_id, progress=34, message="Her cümle için anlatıma uygun görseller aranıyor…")
         source_records: list[dict[str, str]] = []
         scene_assets: list[list[tuple[Path, dict[str, str]]]] = []
+        used_scene_paths: set[Path] = set()
         user_images: list[Path] = []
         for name in job.get("user_images", []):
             path = work_dir / Path(name).name
@@ -1277,11 +1281,11 @@ def render_short_job(job_id: str) -> None:
 
         for idx, group in enumerate(groups):
             scene_text = re.sub(r"\s+", " ", str(group.get("text", "")).strip())
-            scene_terms = english_visual_query(scene_text) or extract_keywords(scene_text)
+            scene_terms = translate_visual_query(scene_text) or english_visual_query(scene_text) or extract_keywords(scene_text)
             # Keep each search focused on the actual narration beat. Retry with
             # a simpler query if the first result set is empty or irrelevant.
             query_variants = []
-            for query in (scene_terms, english_visual_query(title + " " + scene_text), extract_keywords(scene_text)):
+            for query in (scene_terms, translate_visual_query(title + " " + scene_text), english_visual_query(scene_text), extract_keywords(scene_text)):
                 query = re.sub(r"\s+", " ", str(query or "")).strip()
                 if query and query.lower() not in {x.lower() for x in query_variants}:
                     query_variants.append(query[:160])
@@ -1317,22 +1321,24 @@ def render_short_job(job_id: str) -> None:
             # Rank only images discovered for this beat. Do not pull a random
             # image from the video-wide reserve when scene relevance is weak.
             selected: tuple[Path, dict[str, str]] | None = None
-            ranked_scene = rank_scene_images(translate_visual_query(scene_text), scene_pairs)
+            ranked_scene = rank_scene_images(scene_terms, scene_pairs)
             if not ranked_scene:
                 # A broader topic result may be used only if the local vision
                 # model confirms it depicts this exact beat; never random-pick.
                 reserve_candidates = [pair for pair in downloaded_assets if pair not in scene_pairs]
-                ranked_scene = rank_scene_images(translate_visual_query(scene_text), reserve_candidates)
+                ranked_scene = rank_scene_images(scene_terms, reserve_candidates)
             if ranked_scene:
-                best_score, best_pair = ranked_scene[0]
-                # CLIP cosine similarity is normally in this range; lexical
-                # fallback scores are integer metadata overlap values.
-                min_score = 0.18 if isinstance(best_score, float) and best_score < 1 else 4
-                if best_score >= min_score:
-                    selected = best_pair
-                else:
-                    selected = None
-                    print("[visual-match] no candidate passed relevance threshold:", idx + 1, round(float(best_score), 3))
+                # Never reuse the same downloaded photograph in two scenes.
+                # Try the next semantically ranked candidate instead.
+                for score, pair in ranked_scene:
+                    min_score = 0.18 if isinstance(score, float) and score < 1 else 4
+                    if score >= min_score and pair[0] not in used_scene_paths:
+                        selected = pair
+                        used_scene_paths.add(pair[0])
+                        break
+                if selected is None:
+                    best_score = ranked_scene[0][0]
+                    print("[visual-match] no unused relevant candidate passed threshold:", idx + 1, round(float(best_score), 3))
             else:
                 selected = None
 
