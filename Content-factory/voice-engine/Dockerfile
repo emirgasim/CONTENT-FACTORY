@@ -20,7 +20,7 @@ RUN git init /opt/moss && cd /opt/moss && git remote add origin https://github.c
 RUN micromamba run -n content-factory pip install --no-cache-dir torch==2.7.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cpu \
     && micromamba run -n content-factory pip install --no-cache-dir -r /opt/moss/requirements.txt \
     && micromamba run -n content-factory pip install --no-cache-dir -e /opt/moss \
-    && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx
+    && micromamba run -n content-factory pip install --no-cache-dir faster-whisper pillow requests httpx transformers==4.51.3 safetensors
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER gateway.py /app/gateway.py
 COPY --chown=$MAMBA_USER:$MAMBA_USER editing_agent.py /app/editing_agent.py
