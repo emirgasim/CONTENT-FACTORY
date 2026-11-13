@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse,json,os,re,shutil,sys,tempfile,time
+import argparse,json,os,re,shutil,sys,tempfile,time,wave
 from pathlib import Path
 import requests
 from requests.exceptions import RequestException
@@ -49,6 +49,20 @@ def upload_review_image(job_id,scene,candidate,path):
    response.raise_for_status()
  return {"parts":parts,"size":size,"key":f"jobs/{job_id}/review/scene-{scene}/candidate-{candidate}"}
 
+def make_text_groups(text):
+ words=re.findall(r"\\S+",str(text or ""))
+ groups=[]
+ for i in range(0,len(words),7):
+  chunk=" ".join(words[i:i+7]);start=(i//7)*2.8
+  beat_duration=max(1.2,min(2.8,len(words[i:i+7])*0.38))
+  groups.append({"index":len(groups)+1,"start":round(start,3),"end":round(start+beat_duration,3),"duration":round(beat_duration,3),"text":chunk})
+ return groups
+def create_silence(path,duration):
+ rate=44100
+ with wave.open(str(path),"wb") as f:
+  f.setnchannels(2);f.setsampwidth(2);f.setframerate(rate)
+  f.writeframes(b"\\0\\0\\0\\0"*int(rate*duration))
+ return path
 def make_sentence_groups(rows,duration):
  # Identical word-aligned visual beats are used for research and final render.
  # Each visual beat is capped for pacing; total narration duration is unrestricted.
@@ -206,16 +220,20 @@ def render_approved_timeline(job_id,meta,work,source,selections):
   "edit_strategy":str(edit_plan.get("strategy","unknown"))
 }
 
-def prepare_review(job_id,meta,work,source):
- duration=gateway.probe_duration(source)
- rows=gateway.transcribe_audio(source)
- if not rows:raise RuntimeError("Seslendirmeden metin çözümlenemedi.")
- edit_plan=gateway.build_edit_plan(rows,duration)
- cleaned=work/"review-cleaned.wav"
- gateway.render_edited_audio(source,cleaned,edit_plan)
- rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
- duration=gateway.probe_duration(cleaned)
- groups=make_sentence_groups(rows,duration)
+def prepare_review(job_id,meta,work,source=None):
+ if meta.get("input_mode")=="text":
+  groups=make_text_groups(meta.get("text",""))
+  duration=groups[-1]["end"] if groups else 0
+ else:
+  duration=gateway.probe_duration(source)
+  rows=gateway.transcribe_audio(source)
+  if not rows:raise RuntimeError("Seslendirmeden metin çözümlenemedi.")
+  edit_plan=gateway.build_edit_plan(rows,duration)
+  cleaned=work/"review-cleaned.wav"
+  gateway.render_edited_audio(source,cleaned,edit_plan)
+  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
+  duration=gateway.probe_duration(cleaned)
+  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için sahne zaman çizelgesi oluşturulamadı.")
  manifest={"hook":meta.get("hook",""),"duration":round(duration,2),"scenes":[]}
  query_cache={}
@@ -301,15 +319,17 @@ def render(job_id,phase='research'):
  work=Path(tempfile.mkdtemp(prefix="cf-cloud-"+job_id[:8]+"-"))
  try:
   update_status(job_id,status="processing",progress=3,message="Bulut işçisi proje dosyalarını alıyor.")
-  suffix=Path(meta["audio"]["name"]).suffix.lower()
-  if suffix not in {".mp3",".m4a",".wav",".aac",".mp4",".mpeg",".mpga",".ogg",".opus",".webm",".flac",".bin"}:suffix=".bin"
-  source=work/("source"+suffix);get_input(job_id,"audio",source)
+  source=None
+  if meta.get("input_mode")!="text":
+   suffix=Path((meta.get("audio") or {}).get("name","narration.bin")).suffix.lower()
+   if suffix not in {".mp3",".m4a",".wav",".aac",".mp4",".mpeg",".mpga",".ogg",".opus",".webm",".flac",".bin"}:suffix=".bin"
+   source=work/("source"+suffix);get_input(job_id,"audio",source)
   user_images=[]
   for i,item in enumerate(meta.get("images",[])):
    asset=f"image-{i+1:02d}";ext=Path(item["name"]).suffix.lower()
    if ext not in {".jpg",".jpeg",".png",".webp"}:ext=".img"
    path=work/(f"reference-{i+1}{ext}");get_input(job_id,asset,path);user_images.append(path.name)
-  job={"job_id":job_id,"status":"queued","progress":4,"message":"Dosyalar alındı; ses ve sahneler analiz ediliyor.","created_at":meta["created_at"],"updated_at":time.time(),"expires_at":meta["expires_at"],"directory":str(work),"source_audio":source.name,"title":meta["title"],"hook":meta.get("hook",""),"text":meta["text"],"user_images":user_images,"error":None}
+  job={"job_id":job_id,"status":"queued","progress":4,"message":"Dosyalar alındı; ses ve sahneler analiz ediliyor.","created_at":meta["created_at"],"updated_at":time.time(),"expires_at":meta["expires_at"],"directory":str(work),"source_audio":source.name if source else None,"title":meta["title"],"hook":meta.get("hook",""),"text":meta["text"],"user_images":user_images,"error":None}
   with gateway.JOBS_LOCK:gateway.JOBS[job_id]=job
   if phase=="research":
    prepare_review(job_id,meta,work,source)
