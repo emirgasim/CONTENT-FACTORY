@@ -6,3 +6,7 @@ async function putJob({request,env,params}){if(!authorized(request,env))return j
 // A single method dispatcher avoids platform-specific method-handler routing
 // mismatches: both the startup heartbeat and the Python worker use this route.
 export async function onRequest(context){const method=context.request.method.toUpperCase();if(method==="GET")return getJob(context);if(method==="PUT"||method==="POST")return putJob(context);return json({error:"Method not allowed"},405);}
+
+export async function onRequestGet(context){return getJob(context);}
+export async function onRequestPut(context){return putJob(context);}
+export async function onRequestPost(context){return putJob(context);}
