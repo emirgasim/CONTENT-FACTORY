@@ -28,7 +28,8 @@ jobs:
         run: node --check Content-factory/public/local-render.js
       - name: Check Cloudflare Pages Function syntax
         run: |
-          node --input-type=module --check < Content-factory/functions/api/visual-search.js\n          node --input-type=module --check < Content-factory/functions/api/visual-image.js\n          node --input-type=module --check < Content-factory/functions/api/agent/registry.js
+          node --input-type=module --check < Content-factory/functions/api/visual-search.js
+          node --input-type=module --check < Content-factory/functions/api/visual-image.js\n          node --input-type=module --check < Content-factory/functions/api/agent/registry.js
           node --input-type=module --check < Content-factory/functions/api/agent/run.js
           node --input-type=module --check < Content-factory/functions/api/shorts/jobs.js
           node --input-type=module --check < 'Content-factory/functions/api/shorts/jobs/[jobId].js'
