@@ -88,7 +88,8 @@ async function pollCloudJob(id,title){
   if(!response.ok){let msg="İş durumu okunamadı ("+response.status+").";try{msg=(await response.json()).error||msg}catch{}throw Error(msg)}
   const job=await response.json();setProgress(job.progress||3);
   if(job.message&&job.message!==lastMessage){setStatus("#renderStatus",job.message);lastMessage=job.message}
-  if(job.status==="awaiting_approval"){showVisualReview(job);setStatus("#renderStatus","Görsel araştırması tamamlandı. Videoyu üretmek için sahneleri onayla.");$("#startRender").textContent="Görseller onay bekliyor";return;}\n  if(job.status==="failed"){$("#deleteCloudProject").classList.remove("hidden");$("#deleteCloudProject").textContent="Başarısız projeyi ve dosyaları sil";$("#renderCleanupStatus").textContent="Bu iş başarısız oldu. Geçici bulut dosyalarını hemen temizleyebilirsin.";throw Error(job.error||"Bulut render başarısız oldu.");}
+  if(job.status==="awaiting_approval"){showVisualReview(job);setStatus("#renderStatus","Görsel araştırması tamamlandı. Videoyu üretmek için sahneleri onayla.");$("#startRender").textContent="Görseller onay bekliyor";return;}
+  if(job.status==="failed"){$("#deleteCloudProject").classList.remove("hidden");$("#deleteCloudProject").textContent="Başarısız projeyi ve dosyaları sil";$("#renderCleanupStatus").textContent="Bu iş başarısız oldu. Geçici bulut dosyalarını hemen temizleyebilirsin.";throw Error(job.error||"Bulut render başarısız oldu.");}
   if(job.status==="completed"){
    const headers={"X-Job-Token":state.jobToken};
    async function output(name){const r=await fetch("/api/shorts/jobs/"+encodeURIComponent(id)+"/"+name,{headers});if(!r.ok){let msg="Çıktı indirilemedi ("+r.status+").";try{msg=(await r.json()).error||msg}catch{}throw Error(msg)}return r.blob()}
