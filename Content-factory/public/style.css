@@ -78,3 +78,17 @@
 #deleteCloudProject{margin-top:12px;background:#D8FF48;color:#101018}
 #renderCleanupStatus{margin-top:12px;font-size:12px;line-height:1.5}
 #renderStatus{white-space:normal;line-height:1.55}
+
+
+/* Separate stock-photo and original-animation production modes */
+.visual-style-picker{margin:16px 0 20px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#11131c}
+.visual-style-picker>.field-label{display:block;margin:0 0 10px;color:var(--aqua);font:10px 'DM Mono';letter-spacing:.08em}
+.visual-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.visual-style-card{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:13px;border:1px solid var(--line);border-radius:10px;background:#1a1c27;cursor:pointer;transition:border-color .15s,background .15s}
+.visual-style-card:has(input:checked){border-color:var(--yellow);background:#2b291d;box-shadow:inset 0 0 0 1px #f7e34a44}
+.visual-style-card input{flex:0 0 auto;margin:4px 0 0;accent-color:var(--yellow)}
+.visual-style-card span{display:block;min-width:0}
+.visual-style-card b{display:block;font-size:13px;margin-bottom:5px;color:var(--text)}
+.visual-style-card small{display:block;color:var(--muted);font-size:11px;line-height:1.5}
+#visualModeDescription{margin:10px 0 0;line-height:1.55}
+@media(max-width:600px){.visual-style-grid{grid-template-columns:1fr}.visual-style-card{padding:12px}}
