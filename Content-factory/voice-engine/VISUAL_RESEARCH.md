@@ -12,7 +12,7 @@ The cloud renderer uses a federated image-research layer. It searches multiple i
 - Google Images, Bing Images, and Yandex Images public result pages (best-effort fallback; HTML layouts, bot checks, and regional access can change without notice)
 
 ### Optional API integrations
-Configure these as environment secrets on the Hugging Face Space that runs `voice-engine`:
+Configure these as **GitHub Actions repository secrets** (Settings → Secrets and variables → Actions) for `emirgasim/CONTENT-FACTORY`. The background renderer workflow passes them securely to the cloud worker:
 
 | Secret | Provider | Notes |
 |---|---|---|
