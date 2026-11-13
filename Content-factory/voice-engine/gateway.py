@@ -534,6 +534,16 @@ def visual_search_queries(title: str, hook: str, script: str) -> list[str]:
     return result
 
 
+def contrast_ink(hex_color: str) -> str:
+    try:
+        value = hex_color.lstrip("#")
+        red, green, blue = (int(value[i:i+2], 16) for i in (0, 2, 4))
+        luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return "#FFFFFF" if luminance < 145 else "#111111"
+    except Exception:
+        return "#111111"
+
+
 def compact_scene_caption(text: str, max_words: int = 7, max_chars: int = 62) -> str:
     value = re.sub(r"\s+", " ", str(text or "")).strip()
     value = re.sub(r"^[\s•–—-]+", "", value)
@@ -654,6 +664,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     accent = PALETTE[(index * 3 + 2) % len(PALETTE)]
     accent_alt = PALETTE[(index * 3 + 6) % len(PALETTE)]
     caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip())
+    ink = contrast_ink(accent)
 
     primary_asset = None
     secondary_asset = None
@@ -692,7 +703,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     title_lines = wrap_lines(draw, title_text, title_font, 950)[:2]
     y = 38 if len(title_lines) == 1 else 22
     for line in title_lines:
-        draw.text((55, y), line, font=title_font, fill="#111111")
+        draw.text((55, y), line, font=title_font, fill=ink)
         y += 66
 
     # Hook: one slim, white rounded window, slightly below the top edge.
@@ -705,7 +716,7 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     draw.rectangle((0, 1305, width, height), fill=accent)
     draw.rectangle((0, 1305, width, 1325), fill="#111111")
     caption_font = load_font(76)
-    draw_wrapped(draw, caption, caption_font, 58, 1410, 960, "#111111", 3)
+    draw_wrapped(draw, caption, caption_font, 58, 1410, 960, ink, 3)
 
     # Optional second stock frame adds a clear visual change without covering the hook.
     if secondary_asset is not None:
