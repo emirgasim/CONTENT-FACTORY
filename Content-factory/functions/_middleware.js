@@ -7,7 +7,7 @@ export async function onRequest(context) {
   if (!contentType.includes("text/html")) return response;
 
   const html = await response.text();
-  if (html.includes("/editor-agent.js")) return new Response(html, response);
+  if (html.includes("/editor-agent.js")) return new Response(html, { status: response.status, statusText: response.statusText, headers: response.headers });
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
