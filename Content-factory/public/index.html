@@ -6,9 +6,9 @@
 <body><div class="shell">
 <header class="topbar"><div class="brand"><span class="brand-mark">✳</span><div><b>CONTENT FACTORY</b><small>CREATIVE VIDEO WORKSPACE</small></div></div><div class="top-actions"><span class="status"><i></i> ONE SHORT STUDIO</span><button id="settingsToggle" class="btn btn-ghost">Bulut sistemi</button></div></header>
 <main>
-<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>İstediğin uzunlukta seslendirmeyi gönder. Sistem her 2–3 saniyelik anlatım parçası için gerçek fotoğraflar bulur; sen onayladıktan sonra Shorts bulutta hazırlanır.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
+<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Sesini veya metnini gönder. Gerçek fotoğraf akışını ya da stoktan bağımsız, konuya özel retro pencere animasyonlarını seç; Shorts bulutta hazırlanır.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
 
-<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses ve onayladığın gerçek fotoğraflar iPhone dışındaki geçici render işçisine gönderilir. Sesin toplam süresine sınır konmaz; yüklediğin sesin tamamı işlenir. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
+<section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses ve onayladığın gerçek fotoğraflar iPhone dışındaki geçici render işçisine gönderilir. Sesin toplam süresine sınır konmaz; yüklediğin sesin tamamı işlenir. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan veya yarım kalan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
 
 <section id="agentHub" class="panel agent-hub">
 <div class="section-head"><div><div class="eyebrow">YOUTUBE AGENT HUB</div><h2>Uzman ajan merkezi</h2></div></div>
@@ -36,12 +36,20 @@
 <div class="panel">
 <div class="step-label"><span>01</span><div><div class="eyebrow">HOOK</div><h3>Videonun kanca cümlesi</h3></div></div>
 <label class="field-label" for="hookText">Kanca yazısı <small>(zorunlu · videonun üst kısmında görünür)</small></label><input id="hookText" maxlength="100" required placeholder="Örn. Bu gizli ayrıntı yıllarca fark edilmedi…">
-<div class="media-info">Metin yapıştırmana gerek yok. Sistem ses dosyanı otomatik yazıya döker ve sahneleri sesin zaman kodlarına göre oluşturur. Görseller ayrı aşamada onayına sunulacak.</div>
+<div class="media-info">Sistem ses dosyanı otomatik yazıya döker ve sahneleri zaman kodlarına göre oluşturur. Stok görsel veya animasyon modunu aşağıdan seçebilirsin.</div>
 <div hidden><input id="topicTitle"><textarea id="scriptText"></textarea><input id="visualFiles" type="file" multiple><span id="scriptCount"></span><button id="clearScript" type="button"></button></div>
 </div>
 <div class="panel">
-<div class="step-label"><span>02</span><div><div class="eyebrow">CONTENT INPUT</div><h3>Ses veya paragraf metni gir</h3></div></div><div class="row"><button type="button" id="audioModeBtn" class="btn btn-primary">Seslendirme kullan</button><button type="button" id="textModeBtn" class="btn btn-ghost">Paragraf metin kullan</button></div><div id="textInputPanel" class="hidden"><label class="field-label" for="scriptInput">Seslendirme metni</label><textarea id="scriptInput" rows="8" maxlength="30000" placeholder="Paragrafını buraya yapıştır. Özel isimler ve kelimeler doğrudan bu metinden analiz edilecek."></textarea><small class="muted" id="scriptInputCount">0 / 30.000 karakter</small><p class="muted">Metin modunda ses dosyası gerekmez. İlk video sessiz hazırlanır.</p></div>
-<div id="audioInputPanel"><p class="muted">İstediğin uzunlukta seslendirmeyi burada kaydedebilir veya hazır ses dosyanı yükleyebilirsin. Sistem sesin tamamını işler; süre sınırı yoktur.</p>
+<div class="step-label"><span>02</span><div><div class="eyebrow">CONTENT INPUT</div><h3>Ses veya paragraf metni gir</h3></div></div><div class="visual-style-picker">
+<label class="field-label">GÖRSEL ÜRETİM TÜRÜ</label>
+<div class="visual-style-grid">
+<label class="visual-style-card"><input type="radio" name="visualMode" value="stock" checked><span><b>Stok görsel</b><small>Gerçek fotoğraflar aranır; her sahneyi sen seçip onaylarsın.</small></span></label>
+<label class="visual-style-card"><input type="radio" name="visualMode" value="animated"><span><b>Animasyonlu sahne</b><small>Stok fotoğraf yok. Konuya özel piksel animasyonu, retro pencere, renkli zemin ve kalın yazı stiliyle otomatik video.</small></span></label>
+</div>
+<p class="media-info" id="visualModeDescription">Stok fotoğraflar araştırılır; her sahnede görsel seçimi ve onay gerekir.</p>
+</div>
+<div class="row"><button type="button" id="audioModeBtn" class="btn btn-primary">Seslendirme kullan</button><button type="button" id="textModeBtn" class="btn btn-ghost">Paragraf metin kullan</button></div><div id="textInputPanel" class="hidden"><label class="field-label" for="scriptInput">Seslendirme metni</label><textarea id="scriptInput" rows="8" maxlength="30000" placeholder="Paragrafını buraya yapıştır. Özel isimler ve kelimeler doğrudan bu metinden analiz edilecek."></textarea><small class="muted" id="scriptInputCount">0 / 30.000 karakter</small><p class="muted">Metin modunda ses dosyası gerekmez. İlk video sessiz hazırlanır.</p></div>
+<div id="audioInputPanel"><p class="muted">Seslendirmeyi burada kaydedebilir veya hazır ses dosyanı yükleyebilirsin. Animasyon modu sesin tamamını işler; süre sınırı yoktur.</p>
 <div class="record-console"><div class="record-indicator" id="recordIndicator"><span></span><b id="recordState">Kayıt hazır</b><strong id="recordTimer">00:00</strong></div><div class="record-actions"><button id="startRecording" class="btn btn-primary">● Mikrofonla kaydet</button><button id="stopRecording" class="btn btn-dark" disabled>Kaydı bitir</button><button id="redoRecording" class="btn btn-ghost hidden" disabled>Yeniden kaydet</button></div></div>
 <div id="recordStatus" class="media-info">Mikrofon izni istendiğinde izin ver. Hazır ses dosyası yüklemek için aşağıdaki Dosyayı Seç alanını kullan.</div>
 <audio id="referencePreview" controls class="audio-preview hidden"></audio><div class="upload-audio"><label class="field-label" for="audioFile">VEYA HAZIR SES DOSYASI YÜKLE</label><input id="audioFile" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.mp4,.mpeg,.mpga,.ogg,.opus,.webm"><span class="muted">MP3, M4A, WAV veya desteklenen ses dosyası · En fazla 30 MB</span></div>
@@ -56,7 +64,7 @@
 <div class="result-preview"><video id="finalVideo" controls playsinline></video></div>
 <div class="trim-stats" id="renderStats"></div>
 <div class="download-grid"><button id="downloadVideo" class="btn btn-primary">MP4 indir</button><button id="downloadCleanAudio" class="btn btn-ghost">Temiz ses indir</button><button id="downloadCredits" class="btn btn-ghost">Kaynak / lisans bilgisi</button></div><div id="renderCleanupStatus" class="media-info"></div><button id="deleteCloudProject" class="btn btn-primary btn-wide hidden">İndirdim, projeyi sil</button><button id="nextTopic" class="btn btn-ghost btn-wide">İkinci konuya geç / yeni Shorts başlat</button>
-<p class="muted">İndirilen görsel video, CapCut'ta yüz kliplerin ve diğer Shorts parçalarınla birleştirilmeye hazırdır.</p>
+<p class="muted">İndirilen MP4, CapCut'ta diğer Shorts parçalarınla birleştirilmeye hazırdır.</p>
 </div>
 </div>
 </section>
