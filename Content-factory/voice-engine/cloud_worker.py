@@ -354,7 +354,7 @@ def render_animated_timeline(meta,work,source):
    "end":round(end,3),
    "duration":round(span,3),
    "text":scene_text[:220],
-   "visual_kind":infer_kind(scene_text,str(meta.get("title",""))+" "+str(meta.get("hook","")))
+   "visual_kind":infer_kind(scene_text,project_context)
   })
  if not render_scenes:raise RuntimeError("Animasyon için kullanılabilir sahne metni yok.")
  # Preserve the complete narration timeline exactly; any tiny grouping gaps are filled
