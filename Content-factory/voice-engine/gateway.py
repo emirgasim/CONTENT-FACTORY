@@ -974,14 +974,16 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
 
         scene = re.sub(r"\s+", " ", str(query or "")).strip()[:260]
         positive_prompts = [
-            "A real documentary photograph showing this exact scene: " + scene,
-            "A real-life news photograph whose main subject is: " + scene,
-            "A candid photograph illustrating this specific moment: " + scene,
+            "An authentic real-world documentary photograph, camera-captured, showing this exact scene: " + scene,
+            "An authentic archival or news photograph, not artwork, whose main subject is: " + scene,
+            "A candid real-life camera photograph of this specific moment: " + scene,
         ]
         negative_prompts = [
-            "A corporate logo, brand logo, or company identity graphic unrelated to the described scene.",
-            "A promotional advertisement, sale banner, coupon, or product listing unrelated to the described scene.",
-            "An unrelated diagram, chart, infographic, map, or screenshot.",
+            "An illustration, painting, drawing, sketch, engraving, or hand-made artwork.",
+            "A digital artwork, concept art, 3D render, CGI scene, animation, or computer-generated image.",
+            "An AI-generated synthetic image or photorealistic AI illustration.",
+            "A corporate logo, brand logo, company identity graphic, or promotional advertisement.",
+            "An unrelated diagram, chart, infographic, map, screenshot, or product listing.",
             "A stock photograph whose main subject is unrelated to the described scene.",
         ]
         prompts = positive_prompts + negative_prompts
@@ -1248,8 +1250,6 @@ def render_short_job(job_id: str, approved_scene_assets: list[tuple[Path, dict[s
                 "decisions": [{"type": "fallback", "reason": "word_alignment_or_audio_edit_unavailable"}],
             }
 
-        if duration < 8:
-            raise RuntimeError("Ses çok kısa. Lütfen daha uzun bir seslendirme üret.")
         if not rows:
             rows = fallback_segments(script, duration)
 
