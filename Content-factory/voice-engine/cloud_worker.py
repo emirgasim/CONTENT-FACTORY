@@ -104,15 +104,22 @@ def download_external_image(url,destination):
  return Path(destination)
 
 def render_approved_timeline(job_id,meta,work,source,selections):
- source_duration=gateway.probe_duration(source)
- rows=gateway.transcribe_audio(source)
- if not rows:raise RuntimeError("Seslendirmeden kelime zaman kodları çıkarılamadı.")
- edit_plan=gateway.build_edit_plan(rows,source_duration)
- cleaned=work/"cleaned.wav"
- gateway.render_edited_audio(source,cleaned,edit_plan)
- rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
- duration=gateway.probe_duration(cleaned)
- groups=make_sentence_groups(rows,duration)
+ if meta.get("input_mode")=="text":
+  groups=make_text_groups(meta.get("text",""))
+  if not groups:raise RuntimeError("Metinden sahne oluşturulamadı.")
+  duration=groups[-1]["end"]
+  cleaned=work/"cleaned.wav";create_silence(cleaned,duration)
+  edit_plan={"strategy":"text_only","cuts":[],"removed_seconds":0.0}
+ else:
+  source_duration=gateway.probe_duration(source)
+  rows=gateway.transcribe_audio(source)
+  if not rows:raise RuntimeError("Seslendirmeden kelime zaman kodları çıkarılamadı.")
+  edit_plan=gateway.build_edit_plan(rows,source_duration)
+  cleaned=work/"cleaned.wav"
+  gateway.render_edited_audio(source,cleaned,edit_plan)
+  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
+  duration=gateway.probe_duration(cleaned)
+  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için cümle tabanlı sahne zaman çizelgesi oluşturulamadı.")
  by_index={int(g["index"]):g for g in groups}
  items=selections.get("scenes") or []
