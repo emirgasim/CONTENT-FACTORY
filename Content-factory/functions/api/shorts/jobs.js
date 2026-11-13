@@ -29,9 +29,11 @@ export async function onRequestPost({request,env}){
   await kv.put(prefix+"owner.json",JSON.stringify({token_hash:await digest(ownerToken)}),{expirationTtl:TTL_SECONDS});
   await kv.put(prefix+"status.json",JSON.stringify({job_id:id,status:"queued",progress:1,message:"Bulut render kuyruğuna alındı.",created_at:createdAt,updated_at:createdAt,expires_at:expiresAt}),{expirationTtl:TTL_SECONDS});
   limit.count++;await kv.put(ipKey,JSON.stringify(limit),{expirationTtl:3600});
-  const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN).trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id}})});
+  const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id}})});
   if(gh.status!==204){
-   let details="";try{const body=await gh.json();details=String(body.message||"")+(body.errors?.length?" · "+body.errors.map(x=>typeof x==="string"?x:(x.message||JSON.stringify(x))).join("; "):"");}catch{details=(await gh.text().catch(()=>"")).slice(0,500);}
+   let details="";
+   try{const body=await gh.json();details=String(body.message||"")+(body.errors?.length?" · "+body.errors.map(x=>typeof x==="string"?x:(x.message||JSON.stringify(x))).join("; "):"");}
+   catch{details=(await gh.text().catch(()=>"")).slice(0,500);}
    const reason=details||"GitHub yanıt gövdesi boş.";
    throw Error("GitHub workflow dispatch reddedildi (HTTP "+gh.status+"): "+reason+" [Request-ID: "+(gh.headers.get("x-github-request-id")||"yok")+"].");
   }
