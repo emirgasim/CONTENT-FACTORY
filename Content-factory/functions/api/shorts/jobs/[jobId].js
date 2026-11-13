@@ -21,8 +21,8 @@ export async function onRequestPost({request,env,params}){
   scenes.push({scene:scene.index,candidate:option.id,metadata:{title:option.title,author:option.author,license:option.license,license_url:option.license_url,page_url:option.page_url,url:"",source:option.source}});
  }
  await kv.put("jobs/"+id+"/selection.json",JSON.stringify({scenes}),{expirationTtl:86400});
- const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id,phase:"render"}})});
- if(gh.status!==204)return json({error:"Onay kaydedildi ancak render başlatılamadı (HTTP "+gh.status+")."},502);
  await kv.put("jobs/"+id+"/status.json",JSON.stringify({...status,status:"queued",progress:88,message:"Onayladığın görsellerle video üretiliyor.",updated_at:new Date().toISOString()}),{expirationTtl:86400});
+ const gh=await fetch("https://api.github.com/repos/emirgasim/CONTENT-FACTORY/actions/workflows/shorts-background.yml/dispatches",{method:"POST",headers:{"Authorization":"Bearer "+String(env.GITHUB_ACTIONS_TOKEN||"").trim(),"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"ContentFactory-CloudRenderer"},body:JSON.stringify({ref:"main",inputs:{job_id:id,phase:"render"}})});
+ if(gh.status!==204){await kv.put("jobs/"+id+"/status.json",JSON.stringify(status),{expirationTtl:86400});return json({error:"Render başlatılamadı (HTTP "+gh.status+")."},502);}
  return json({ok:true,status:"queued"});
 }
