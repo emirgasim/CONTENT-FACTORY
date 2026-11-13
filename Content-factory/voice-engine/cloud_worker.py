@@ -228,7 +228,12 @@ def prepare_review(job_id,meta,work,source):
   visual_target=re.sub(r"\bsilvestre\b","Sylvester",visual_target,flags=re.I)
   visual_target=re.sub(r"\bsylvester\b(?!\s+stallone)","Sylvester Stallone",visual_target,flags=re.I)
   lower_scene=scene_text.casefold()
-  if "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
+  # Turkish Whisper frequently mishears the proper name "Rocky" as "rakı".
+  # Correct this only in the visual-search intent; preserve the original transcript.
+  rocky_reference=bool(re.search(r"\brak[iı]\s+balboa\b|\brocky\s+balboa\b",lower_scene))
+  if rocky_reference:
+   visual_target="Rocky Balboa Sylvester Stallone boxing film character"
+  elif "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
    visual_target="Sylvester Stallone arriving; Sylvester Stallone, Rocky actor"
   if not visual_target:
    visual_target=gateway.translate_visual_query(scene_text)[:180]
@@ -240,7 +245,14 @@ def prepare_review(job_id,meta,work,source):
    gateway.translate_visual_query(str(meta.get("title",""))+" "+scene_text),
    gateway.extract_keywords(str(meta.get("title",""))+" "+scene_text),
   ]
-  if "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
+  if rocky_reference:
+   query_candidates.extend([
+    "Rocky Balboa Sylvester Stallone boxing movie photograph",
+    "Sylvester Stallone Rocky Balboa film still boxing ring",
+    "Rocky Balboa 1976 film Sylvester Stallone real photograph",
+    "Sylvester Stallone as Rocky Balboa press photo"
+   ])
+  elif "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
    query_candidates.extend(["Sylvester Stallone arriving","Sylvester Stallone Rocky actor photograph","Sylvester Stallone candid photo"])
   for q in query_candidates:
    q=" ".join(str(q or "").split())
@@ -248,7 +260,7 @@ def prepare_review(job_id,meta,work,source):
   pairs=[];seen=set()
   # More focused query variants and a larger candidate pool prevent a single
   # weak translation/search response from failing an otherwise valid scene.
-  for q in queries[:6]:
+  for q in queries[:8]:
    candidates=query_cache.get(q)
    if candidates is None:
     candidates=gateway.search_public_assets(q,limit=24);query_cache[q]=candidates
