@@ -963,8 +963,6 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     # The lower-third is intentionally left open for word-timed ASS captions.
     # Captions are rendered after the clips are concatenated, so their timing follows
     # the edited narration rather than being baked into a still frame.
-    draw.rounded_rectangle((154, 1740, 926, 1748), radius=4, fill="#344052")
-    draw.rounded_rectangle((154, 1740, 310, 1748), radius=4, fill=accent)
 
     canvas.save(output, quality=95)
 
