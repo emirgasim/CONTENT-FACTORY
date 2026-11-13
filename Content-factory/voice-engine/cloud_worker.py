@@ -481,9 +481,21 @@ def prepare_review(job_id,meta,work,source=None):
  request_json("PUT",f"{api_base()}/{job_id}",json={"type":"review","manifest":manifest})
  if not update_status(job_id,status="awaiting_approval",progress=85,message="Görseller hazır. Her sahneyi inceleyip onayla.",scene_count=len(groups)):
   raise RuntimeError("Görsel onay listesi kaydedildi ancak iş durumu güncellenemedi.")
+_STATUS_TELEMETRY={}
 def update_status(job_id,**values):
+ # Reduce KV writes: progress telemetry is coalesced, while state transitions
+ # (queued/processing/uploading/completed/failed/awaiting_approval) are always saved.
+ now=time.monotonic()
+ previous=_STATUS_TELEMETRY.get(job_id,{})
+ next_status=values.get("status")
+ status_changed=next_status and next_status!=previous.get("status")
+ progress=float(values.get("progress",previous.get("progress",0)) or 0)
+ progress_delta=abs(progress-float(previous.get("progress",0) or 0))
+ if previous and not status_changed and progress_delta<10 and now-float(previous.get("time",0))<8:
+  return True
  try:
   request_json("PUT",f"{api_base()}/{job_id}",json=values)
+  _STATUS_TELEMETRY[job_id]={"status":next_status or previous.get("status"),"progress":progress,"time":now}
   return True
  except Exception as exc:
   # Progress telemetry must never terminate a render. Final status is retried
