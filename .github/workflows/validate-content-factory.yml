@@ -41,9 +41,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-dejavu-core
-      - name: Check Python engine syntax and editing-agent tests
+      - name: Install renderer test dependencies
+        run: python -m pip install --disable-pip-version-check pillow requests httpx fastapi python-multipart
+      - name: Check Python engine syntax and render tests
         run: |
-          python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py Content-factory/voice-engine/editing_agent.py Content-factory/voice-engine/test_editing_agent.py
+          python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py Content-factory/voice-engine/editing_agent.py Content-factory/voice-engine/test_editing_agent.py Content-factory/voice-engine/test_visual_fallback.py
           python -m unittest discover -s Content-factory/voice-engine -p 'test_*.py' -v
       - name: Check required application files
         run: |
