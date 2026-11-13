@@ -1114,11 +1114,8 @@ def render_short_job(job_id: str) -> None:
             # Try a specific search for this scene, then progressively broaden.
             # A provider result is not rejected solely because its title lacks
             # the same literal words as the narration.
-            candidate_queries = [scene_query, scene_terms, topic_anchor]
-            for candidate_query in candidate_queries:
-                candidate_query = re.sub(r"\\s+", " ", candidate_query or "").strip()
-                if not candidate_query:
-                    continue
+            candidate_query = re.sub(r"\\s+", " ", scene_query or scene_terms or "").strip()
+            if candidate_query:
                 if candidate_query not in query_cache:
                     query_cache[candidate_query] = search_public_assets(candidate_query, limit=24)
                 for candidate in query_cache[candidate_query]:
@@ -1133,7 +1130,7 @@ def render_short_job(job_id: str) -> None:
                     source_records.append(candidate)
                     downloaded_assets.append(selected)
                     break
-            
+
             # If a scene-specific query fails, use the best unused image from
             # the already verified pool for this same video's topic—not a random
             # internet image and never an unrelated search result.
@@ -1154,20 +1151,6 @@ def render_short_job(job_id: str) -> None:
                     selected = ranked_pool[idx % len(ranked_pool)]
 
             # User-supplied reference images remain the final intentional fallback.
-            if selected is None and user_images:
-                own_path = user_images[idx % len(user_images)]
-                selected = (own_path, {
-                    "title": own_path.name,
-                    "author": "User supplied",
-                    "license": "User supplied; verify your own rights",
-                    "license_url": "",
-                    "page_url": "",
-                    "url": "",
-                    "source": "User upload",
-                })
-                source_records.append(selected[1])
-
-            # User-supplied reference images are trusted as intentional inputs.
             if selected is None and user_images:
                 own_path = user_images[idx % len(user_images)]
                 selected = (own_path, {
