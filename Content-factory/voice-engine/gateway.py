@@ -740,6 +740,7 @@ def render_one_scene(canvas: Path, duration: float, output: Path) -> None:
 
 
 def render_short_job(job_id: str) -> None:
+    # Updated 9:16 layout, stock-image matching, short scene captions and pause trimming.
     with JOBS_LOCK:
         job = JOBS.get(job_id)
         if not job:
