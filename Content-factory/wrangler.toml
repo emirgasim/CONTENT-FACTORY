@@ -9,5 +9,7 @@ binding = "AI"
 binding = "SHORTS_TEMP"
 id = "f4d23ed38fb94097aacc44fb142b2b07"
 
-# Workers AI powers the autonomous editor command agent.
-# KV stores temporary media and project metadata; do not configure an R2 bucket.
+# Small job metadata/status only. Large media files must use R2.
+[[r2_buckets]]
+binding = "SHORTS_MEDIA"
+bucket_name = "content-factory-media"
