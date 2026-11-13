@@ -71,7 +71,7 @@ def render(job_id):
    if not path.is_file():raise RuntimeError("Render çıktısı bulunamadı: "+local)
    manifest[name]=upload_file(job_id,name,path)
   request_json("PUT",f"{api_base()}/{job_id}/manifest",json={"type":"manifest","manifest":manifest})
-  update_status(job_id,status="completed",progress=100,message="MP4 hazır. iPhone'una indir; ardından projeyi silebilirsin.",duration=round(float(result.get("duration",0)),2),removed_silence=round(float(result.get("removed_silence",0)),2),scene_count=int(result.get("scene_count",0)),source_count=int(result.get("source_count",0)),video_bytes=manifest["video"]["size"])
+  update_status(job_id,status="completed",progress=100,message="MP4 hazır. iPhone'una indir; ardından projeyi silebilirsin.",duration=round(float(result.get("duration",0)),2),removed_silence=round(float(result.get("removed_silence",0)),2),edit_cut_count=int(result.get("edit_cut_count",0)),scene_count=int(result.get("scene_count",0)),source_count=int(result.get("source_count",0)),caption_count=int(result.get("caption_count",0)),qc_duration_delta=float(result.get("qc_duration_delta",0)),edit_strategy=str(result.get("edit_strategy","unknown")),video_bytes=manifest["video"]["size"])
  except Exception as exc:
   try:update_status(job_id,status="failed",progress=100,message="Bulut render başarısız.",error=str(exc)[:1800])
   except Exception:pass
