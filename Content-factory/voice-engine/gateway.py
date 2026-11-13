@@ -300,73 +300,51 @@ def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
 
 
 def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float | None = None) -> list[dict[str, Any]]:
-    """Build a calm caption hierarchy: sentence -> clause -> readable phrase."""
-    minimum_beat = 1.35
-    preferred_beat = max(2.15, min(3.25, float(target_seconds or 2.7)))
-    maximum_beat = 4.0
+    """Keep Whisper's real word timings; merge only very short adjacent beats."""
     groups: list[dict[str, Any]] = []
-
     for row in rows:
-        text = re.sub(r"\s+", " ", str(row.get("text", "")).strip())
-        start = max(0.0, float(row.get("start", 0.0)))
-        end = min(duration, max(start + 0.08, float(row.get("end", start + 0.5))))
-        if not text:
+        text = re.sub(r"\\s+", " ", str(row.get("text", "")).strip())
+        start = max(0.0, min(duration, float(row.get("start", 0.0))))
+        end = max(start + 0.08, min(duration, float(row.get("end", start + 0.5))))
+        if not text or end <= start:
             continue
-
-        # Preserve sentence and clause boundaries; split only long clauses.
-        clauses = [p.strip() for p in re.split(r"(?<=[.!?;,:])\s+", text) if p.strip()] or [text]
-        chunks: list[str] = []
-        for clause in clauses:
-            words = clause.split()
-            current: list[str] = []
-            for word in words:
-                current.append(word)
-                if len(current) >= 7:
-                    chunks.append(" ".join(current))
-                    current = []
-            if current:
-                chunks.append(" ".join(current))
-        if not chunks:
-            continue
-
-        weights = [max(1, len(part.split())) for part in chunks]
-        total_weight = sum(weights)
-        row_span = max(0.08, end - start)
+        words = text.split()
+        # Keep phrases readable, but do not split a short sentence into single-word flashes.
+        chunks = [" ".join(words[i:i + 9]) for i in range(0, len(words), 9)]
+        weights = [max(1, len(x.split())) for x in chunks]
+        total = sum(weights)
         cursor = start
-        for index, (part, weight) in enumerate(zip(chunks, weights)):
-            part_end = end if index == len(chunks) - 1 else cursor + row_span * weight / total_weight
-            groups.append({"start": cursor, "end": part_end, "text": part})
+        for i, (chunk, weight) in enumerate(zip(chunks, weights)):
+            part_end = end if i == len(chunks) - 1 else cursor + (end - start) * weight / total
+            groups.append({"start": cursor, "end": part_end, "text": chunk})
             cursor = part_end
-
     if not groups:
         return fallback_segments("", duration)
 
-    # Merge tiny beats and cap the number of cards so every caption has enough screen time.
-    max_groups = max(1, int(duration / minimum_beat))
-    while len(groups) > max_groups:
-        spans = [max(0.0, float(g["end"]) - float(g["start"])) for g in groups]
-        index = min(range(len(groups)), key=lambda i: spans[i])
-        if index == 0:
-            neighbour = 1
-        elif index == len(groups) - 1:
-            neighbour = index - 1
+    # Merge short caption flashes with the closest neighbour without moving audio timestamps.
+    minimum = 1.55
+    while len(groups) > 1:
+        spans = [float(g["end"]) - float(g["start"]) for g in groups]
+        short = [i for i, span in enumerate(spans) if span < minimum]
+        if not short:
+            break
+        i = min(short, key=lambda n: spans[n])
+        if i == 0:
+            j = 1
+        elif i == len(groups) - 1:
+            j = i - 1
         else:
-            left_gap = abs(spans[index - 1] - spans[index])
-            right_gap = abs(spans[index + 1] - spans[index])
-            neighbour = index - 1 if left_gap <= right_gap else index + 1
-        left, right = sorted((index, neighbour))
-        groups[left]["text"] = (str(groups[left]["text"]).strip() + " " + str(groups[right]["text"]).strip()).strip()
+            j = i - 1 if spans[i - 1] <= spans[i + 1] else i + 1
+        left, right = sorted((i, j))
+        groups[left]["text"] = (groups[left]["text"].rstrip() + " " + groups[right]["text"].lstrip()).strip()
         groups[left]["end"] = groups[right]["end"]
         groups.pop(right)
-
-    weights = [max(1.0, len(str(g["text"]).split()) ** 0.82) for g in groups]
-    total_weight = sum(weights)
-    cursor = 0.0
-    for index, group in enumerate(groups):
-        group["start"] = cursor
-        cursor = duration if index == len(groups) - 1 else cursor + duration * weights[index] / total_weight
-        group["end"] = cursor
+    # Preserve original timing; only clamp tiny ASR overlap/drift.
+    for i, group in enumerate(groups):
+        group["start"] = max(0.0, min(duration, float(group["start"])))
+        group["end"] = max(group["start"] + 0.08, min(duration, float(group["end"])))
     return groups
+
 
 def plain_text(value: Any) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
@@ -874,122 +852,69 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
+    """Full-bleed 9:16 visual with centered, readable captions; no decorative bands."""
     width, height = 1080, 1920
-    accent = PALETTE[(index * 3 + 2) % len(PALETTE)]
-    accent_alt = PALETTE[(index * 3 + 6) % len(PALETTE)]
-    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip())
-    ink = contrast_ink(accent)
-
-    primary_asset = None
-    secondary_asset = None
-    if assets:
-        try:
-            primary_asset = Image.open(assets[0][0]).convert("RGB")
-        except Exception:
-            primary_asset = None
-    if len(assets) > 1:
-        try:
-            secondary_asset = Image.open(assets[1][0]).convert("RGB")
-        except Exception:
-            secondary_asset = None
-
-    canvas = Image.new("RGB", (width, height), accent)
+    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(), max_words=10, max_chars=88)
+    if not assets:
+        raise RuntimeError("Sahne için doğrulanmış görsel bulunamadı.")
+    try:
+        with Image.open(assets[0][0]) as source:
+            canvas = cover_image(source, (width, height))
+    except Exception as exc:
+        raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
+    # Restrained cinematic grade and a soft full-frame dark veil for legible typography.
+    canvas = Image.blend(canvas, Image.new("RGB", (width, height), "#10131A"), 0.10)
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    for y in range(height):
+        alpha = int(115 * max(0.0, (y / height - 0.45) / 0.55))
+        if alpha:
+            od.line((0, y, width, y), fill=(0, 0, 0, alpha))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay)
     draw = ImageDraw.Draw(canvas)
 
-    # Hero stock photo occupies a large, unmistakable area of every scene.
-    if primary_asset is not None:
-        canvas.paste(cover_image(primary_asset, (width, 900)), (0, 405))
-        overlay = Image.new("RGBA", (width, 900), (0, 0, 0, 0))
-        od = ImageDraw.Draw(overlay)
-        od.rectangle((0, 0, width, 140), fill=(10, 12, 20, 60))
-        canvas.paste(Image.alpha_composite(canvas.crop((0, 405, width, 1305)).convert("RGBA"), overlay).convert("RGB"), (0, 405))
-    else:
-        raise RuntimeError("Bu sahne için gerçek stok görsel bulunamadı; yapay geometrik şekillerle video oluşturulmayacak.")
-
-    # No generic Content Factory heading is printed into the video.
-
-    # Hook: compact white pill sized to its text, using the exact caption font.
-    caption_font = load_font(76)
+    # Small persistent hook at the top; no oversized pill or waveform decoration.
     if hook:
-        # Use the exact lower-caption font, weight, size, line spacing and outline.
-        hook_text = re.sub(r"\\s+", " ", str(hook or "")).strip()
-        hook_lines = wrap_lines(draw, hook_text, caption_font, 900)[:2]
-        hook_line_height = int(caption_font.size * 1.18)
-        line_widths = []
+        hook_font = load_font(42)
+        hook_lines = wrap_lines(draw, re.sub(r"\\s+", " ", hook.strip()), hook_font, 900)[:2]
+        y = 110
         for line in hook_lines:
-            bbox = draw.textbbox((0, 0), line, font=caption_font, stroke_width=2)
-            line_widths.append(bbox[2] - bbox[0])
-        hook_text_width = max(line_widths, default=0)
-        # The white pill hugs the widest rendered line; only a small side padding remains.
-        hook_width = min(970, max(1, hook_text_width + 64))
-        hook_height = len(hook_lines) * hook_line_height + 28
-        hook_left = (width - hook_width) // 2
-        hook_top = 242
-        draw_rounded_compat(
-            draw,
-            (hook_left, hook_top, hook_left + hook_width, hook_top + hook_height),
-            radius=24,
-            fill="#FFFFFF",
-        )
-        y = hook_top + max(0, (hook_height - len(hook_lines) * hook_line_height) // 2)
-        for line in hook_lines:
-            bbox = draw.textbbox((0, 0), line, font=caption_font, stroke_width=2)
+            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=1)
             x = (width - (bbox[2] - bbox[0])) // 2
-            draw.text(
-                (x, y), line, font=caption_font, fill="#111111",
-                stroke_width=2, stroke_fill="#161616",
-            )
-            y += hook_line_height
+            draw.text((x, y), line, font=hook_font, fill="#FFFFFF", stroke_width=2, stroke_fill="#111111")
+            y += 54
 
-    # Story caption panel. The words are deliberately short; no generic footer slogans.
-    draw.rectangle((0, 1305, width, height), fill=accent)
-    draw.rectangle((0, 1305, width, 1325), fill="#111111")
-    draw_wrapped(draw, caption, caption_font, 58, 1410, 960, ink, 3)
+    # Center-lower caption: compact translucent backing, white type, subtle shadow.
+    font = load_font(68)
+    lines = wrap_lines(draw, caption, font, 900)[:3]
+    line_h = 84
+    text_h = len(lines) * line_h
+    top = 1010 - text_h // 2
+    widths = [draw.textbbox((0, 0), line, font=font, stroke_width=1)[2] for line in lines]
+    panel_w = min(980, max(widths, default=0) + 74)
+    panel_h = text_h + 54
+    left = (width - panel_w) // 2
+    draw_rounded_compat(draw, (left, top - 27, left + panel_w, top + panel_h - 27), radius=28, fill=(0, 0, 0, 150))
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=1)
+        x = (width - (bbox[2] - bbox[0])) // 2
+        draw.text((x + 2, top + 2), line, font=font, fill="#000000", stroke_width=2, stroke_fill="#000000")
+        draw.text((x, top), line, font=font, fill="#FFFFFF", stroke_width=1, stroke_fill="#111111")
+        top += line_h
+    canvas.convert("RGB").save(output, quality=94)
 
-    # Optional second stock frame adds a clear visual change without covering the hook.
-    if secondary_asset is not None:
-        inset = cover_image(secondary_asset, (285, 255))
-        canvas.paste(inset, (735, 1020))
-        frame = ImageDraw.Draw(canvas)
-        draw_rounded_compat(frame, (728, 1013, 1027, 1282), radius=24, outline="#FFFFFF", width=10)
-
-    canvas.save(output, quality=94)
 
 def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
-    zoom = "zoompan=z='min(zoom+0.00065,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=25"
+    # Alternating slow push/pull creates restrained movement without distracting effects.
+    direction = "min(zoom+0.0009,1.12)" if int(audio_start * 10) % 2 == 0 else "if(eq(on,1),1.12,max(zoom-0.0009,1.0))"
+    zoom = "zoompan=z='" + direction + "':x='iw/2-(iw/zoom/2)+8*sin(on/38)':y='ih/2-(ih/zoom/2)+10*cos(on/44)':d=1:s=1080x1920:fps=30"
+    args = ["ffmpeg", "-y", "-loop", "1", "-i", str(canvas)]
     if audio_path and audio_path.is_file():
-        # Animate only the exposed color bands; preserve the real stock photograph's
-        # natural colors. The narration drives the visible waveforms in both bands.
-        graph = (
-            "[0:v]" + zoom + ",split=3[base][top0][bottom0];"
-            "[top0]crop=1080:405:0:0,"
-            "hue=h='34*sin(2*PI*t/2.2)':s='1.30+0.22*sin(2*PI*t/0.85)',"
-            "eq=contrast='1.04+0.05*sin(2*PI*t/1.3)'[top];"
-            "[bottom0]crop=1080:615:0:1305,"
-            "hue=h='-38*sin(2*PI*t/2.0)':s='1.34+0.20*sin(2*PI*t/0.78)',"
-            "eq=contrast='1.04+0.05*sin(2*PI*t/1.1)'[bottom];"
-            "[base][top]overlay=0:0[tmp1];"
-            "[tmp1][bottom]overlay=0:1305[tmp2];"
-            "[1:a]asplit=2[a1][a2];"
-            "[a1]showwaves=s=1080x116:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
-            "format=rgba,colorkey=0x000000:0.08:0.05[waveTop];"
-            "[a2]showwaves=s=1080x116:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
-            "format=rgba,colorkey=0x000000:0.08:0.05[waveBottom];"
-            "[tmp2][waveTop]overlay=0:24:shortest=1:format=auto[tmp3];"
-            "[tmp3][waveBottom]overlay=0:1780:shortest=1:format=auto,format=yuv420p[v]"
-        )
-        args = [
-            "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
-            "-ss", str(max(0.0, audio_start)), "-t", str(max(0.6, duration)), "-i", str(audio_path),
-            "-filter_complex", graph, "-map", "[v]", "-t", str(max(0.6, duration)),
-            "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(output)
-        ]
+        args += ["-ss", str(max(0.0, audio_start)), "-t", str(max(0.6, duration)), "-i", str(audio_path)]
     else:
-        args = [
-            "ffmpeg", "-y", "-loop", "1", "-i", str(canvas), "-t", str(max(0.6, duration)),
-            "-vf", zoom + ",hue=h='6*sin(2*PI*t/2)':s='1.08+0.06*sin(2*PI*t/1.4)',format=yuv420p",
-            "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(output)
-        ]
+        args += ["-t", str(max(0.6, duration))]
+    args += ["-vf", zoom + ",format=yuv420p", "-t", str(max(0.6, duration)), "-r", "30",
+             "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)]
     result = run_command(args, timeout=300)
     if result.returncode != 0 or not output.exists():
         raise RuntimeError("Sahne render edilemedi: " + result.stderr[-900:])
@@ -1076,7 +1001,7 @@ def render_short_job(job_id: str) -> None:
                     url = candidate.get("url", "")
                     if not url or url in seen_asset_urls:
                         continue
-                    asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
+                    asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
                     if not asset_path:
                         continue
                     seen_asset_urls.add(url)
