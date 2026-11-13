@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);
-const state={reference:null,referenceUrl:null,videoUrl:null,videoBlob:null,audioUrl:null,creditsUrl:null,jobId:null,jobToken:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
+const state={inputMode:"audio",reference:null,referenceUrl:null,videoUrl:null,videoBlob:null,audioUrl:null,creditsUrl:null,jobId:null,jobToken:null,recorder:null,recordChunks:[],recordStream:null,recordTimer:null,recordStarted:0,discardRecordingOnStop:false};
 window.cfState=state;
 const DB_NAME="content-factory-local",STORE="voice-profile";
 function engineUrl(){return ($("#engineUrl").value||localStorage.getItem("cf-engine-url")||"").trim().replace(/\/+$/,"")}
@@ -20,15 +20,15 @@ function loadReference(){const ok=!!state.reference;$("#recordStatus").textConte
 async function downloadBlob(blob,name){if(!blob||!blob.size)throw Error("MP4 dosyası hazır değil. Videoyu yeniden oluştur.");const file=new File([blob],name,{type:blob.type||"video/mp4"});if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:name});return "share"}const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.rel="noopener";a.style.display="none";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),300000);return "download"}
 async function fetchBlob(path){const r=await fetch(engineUrl()+path,{headers:headers()});if(!r.ok){let message="Dosya indirilemedi ("+r.status+")";try{const j=await r.json();message=j.detail||j.error||message}catch{}throw Error(message)}return await r.blob()}
 async function approveAndRender(){
- const title=$("#hookText").value.trim().slice(0,120)||"Content Factory Shorts",hook=$("#hookText").value.trim(),button=$("#startRender");
+ const title=$("#hookText").value.trim().slice(0,120)||"Content Factory Shorts",hook=$("#hookText").value.trim(),button=$("#startRender"),script=$("#scriptInput").value.trim();
  if(!hook){setStatus("#recordStatus","Her video için üstte görünecek kanca yazısını gir.");$("#hookText").focus();return}
- if(!state.reference){setStatus("#recordStatus","Önce mikrofonla kaydet veya hazır ses dosyası seç.");return}
+ if(state.inputMode==="audio"&&!state.reference){setStatus("#recordStatus","Önce mikrofonla kaydet veya hazır ses dosyası seç.");return}if(state.inputMode==="text"&&!script){setStatus("#recordStatus","Önce paragraf metnini gir.");return}
  button.disabled=true;button.textContent="Bulut kuyruğuna yükleniyor…";
  $("#renderPanel").classList.remove("hidden");$("#renderResult").classList.add("hidden");setProgress(2);
  setStatus("#renderStatus","Ses, metin ve referans materyalleri güvenli geçici bulut alanına yükleniyor…");
  try{
   const fd=new FormData();fd.append("title",title);fd.append("hook",hook);
-  fd.append("audio",state.reference,state.reference.name||"narration-audio");
+  fd.append("input_mode",state.inputMode);if(state.inputMode==="audio")fd.append("audio",state.reference,state.reference.name||"narration-audio");else fd.append("text",script);
   
   const response=await fetch("/api/shorts/jobs",{method:"POST",body:fd});
   const job=await response.json();if(!response.ok)throw Error(job.error||"Bulut işi başlatılamadı.");
@@ -141,7 +141,7 @@ $("#settingsToggle").onclick=()=>$("#engineSettings").classList.toggle("hidden")
 $("#startShorts").onclick=openShorts;
 $("#closeEditor").onclick=()=>$("#editor").classList.add("hidden");
 
-$("#hookText").oninput=()=>{$("#startRender").disabled=!state.reference||!$("#hookText").value.trim();if(state.reference)$("#recordStatus").textContent=$("#hookText").value.trim()?"Ses ve kanca hazır.":"Ses hazır. Kanca cümlesini ekle.";};
+$("#hookText").oninput=updateStartButton;function updateStartButton(){const ready=state.inputMode==="text"?!!$("#scriptInput").value.trim():!!state.reference;$("#startRender").disabled=!ready||!$("#hookText").value.trim();}function setInputMode(mode){state.inputMode=mode;const text=mode==="text";$("#audioInputPanel").classList.toggle("hidden",text);$("#textInputPanel").classList.toggle("hidden",!text);$("#audioModeBtn").className="btn "+(!text?"btn-primary":"btn-ghost");$("#textModeBtn").className="btn "+(text?"btn-primary":"btn-ghost");updateStartButton();$("#recordStatus").textContent=text?"Metin modu seçildi.":"Ses modu seçildi.";}$("#audioModeBtn").onclick=()=>setInputMode("audio");$("#textModeBtn").onclick=()=>setInputMode("text");$("#scriptInput").oninput=()=>{$("#scriptInputCount").textContent=$("#scriptInput").value.length.toLocaleString("tr-TR")+" / 30.000 karakter";updateStartButton();};
 $("#startRender").onclick=approveAndRender;$("#approveVisuals").onclick=approveVisualSelection;$("#deleteCloudProject").onclick=deleteCloudProject;
 $("#downloadVideo").onclick=async()=>{const button=$("#downloadVideo");button.disabled=true;try{const name=($("#hookText").value.trim()||"shorts").replace(/[^a-z0-9-_]/gi,"_")+".mp4";const method=await downloadBlob(state.videoBlob,name);$("#deleteCloudProject").classList.remove("hidden");$("#renderCleanupStatus").textContent=method==="share"?"Paylaşım menüsü açıldı. Buradan Dosyalara Kaydet'i seç; kayıt tamamlanınca projeyi silebilirsin.":"İndirme başlatıldı. Dosyalar uygulamasında MP4'ün kaydedildiğini kontrol et; ardından projeyi silebilirsin.";}catch(error){if(error.name!=="AbortError")setStatus("#renderCleanupStatus","MP4 aktarılamadı: "+error.message+" · Yeniden dene.");}finally{button.disabled=false;}};
 $("#downloadCleanAudio").onclick=()=>downloadBlob(state.audioUrl,"shorts-cleaned-voice.wav");
