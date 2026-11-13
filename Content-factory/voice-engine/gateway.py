@@ -692,7 +692,9 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     else:
         raise RuntimeError("Bu sahne için gerçek stok görsel bulunamadı; yapay geometrik şekillerle video oluşturulmayacak.")
 
-    # No generic Content Factory heading is printed into the video.\n\n    # Hook: one slim, white rounded window, slightly below the top edge.
+    # No generic Content Factory heading is printed into the video.
+
+    # Hook: one slim, white rounded window, slightly below the top edge.
     if hook:
         draw_rounded_compat(draw, (55, 242, 1025, 380), radius=28, fill="#FFFFFF")
         hook_font = load_font(43)
