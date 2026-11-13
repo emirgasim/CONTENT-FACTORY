@@ -738,14 +738,25 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
 def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
     zoom = "zoompan=z='min(zoom+0.00065,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=25"
     if audio_path and audio_path.is_file():
-        # A slim animated waveform sits in the open top background band. Its shape is
-        # driven by the exact narration segment, while the color wash gently breathes.
+        # Animate only the exposed color bands; preserve the real stock photograph's
+        # natural colors. The narration drives the visible waveforms in both bands.
         graph = (
-            "[0:v]" + zoom + ",hue=h='6*sin(2*PI*t/2)':s='1.08+0.06*sin(2*PI*t/1.4)'[base];"
-            "[1:a]showwaves=s=1080x170:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
-            "format=rgba,colorkey=0x000000:0.08:0.05,"
-            "hue=h='42*sin(2*PI*t/2)'[wave];"
-            "[base][wave]overlay=0:12:shortest=1:format=auto,format=yuv420p[v]"
+            "[0:v]" + zoom + ",split=3[base][top0][bottom0];"
+            "[top0]crop=1080:405:0:0,"
+            "hue=h='34*sin(2*PI*t/2.2)':s='1.30+0.22*sin(2*PI*t/0.85)',"
+            "eq=contrast='1.04+0.05*sin(2*PI*t/1.3)'[top];"
+            "[bottom0]crop=1080:615:0:1305,"
+            "hue=h='-38*sin(2*PI*t/2.0)':s='1.34+0.20*sin(2*PI*t/0.78)',"
+            "eq=contrast='1.04+0.05*sin(2*PI*t/1.1)'[bottom];"
+            "[base][top]overlay=0:0[tmp1];"
+            "[tmp1][bottom]overlay=0:1305[tmp2];"
+            "[1:a]asplit=2[a1][a2];"
+            "[a1]showwaves=s=1080x116:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
+            "format=rgba,colorkey=0x000000:0.08:0.05[waveTop];"
+            "[a2]showwaves=s=1080x116:mode=cline:rate=25:colors=0xFFFFFF:scale=sqrt,"
+            "format=rgba,colorkey=0x000000:0.08:0.05[waveBottom];"
+            "[tmp2][waveTop]overlay=0:24:shortest=1:format=auto[tmp3];"
+            "[tmp3][waveBottom]overlay=0:1780:shortest=1:format=auto,format=yuv420p[v]"
         )
         args = [
             "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
