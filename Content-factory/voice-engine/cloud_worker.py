@@ -56,6 +56,67 @@ def build_audio_scene_groups(rows,duration):
  if transcript and float(duration)>0:
   return [{"index":1,"start":0.0,"end":round(float(duration),3),"duration":round(float(duration),3),"text":transcript}]
  return []
+def build_scene_visual_query_plan(scene_text,context,meta):
+ title=str(meta.get("title","") or "")
+ hook=str(meta.get("hook","") or "")
+ surrounding=" ".join([title,hook,context])
+ lower=(surrounding+" "+scene_text).casefold()
+ rocky=bool(re.search(r"\\brocky\\b|\\bbalboa\\b|\\brakı\\s+balboa\\b",lower))
+ stallone=bool(re.search(r"\\bstallone\\b|\\bsilvestre\\b|\\bsylvester\\b",lower))
+ scene_target=gateway.english_visual_query(scene_text)
+ context_target=gateway.english_visual_query(context)
+ project_target=gateway.english_visual_query(title+" "+hook)
+ if rocky:
+  target="Rocky Balboa Sylvester Stallone authentic archival film photograph"
+  preferred=[
+   "Rocky Balboa Sylvester Stallone real film still photograph",
+   "Sylvester Stallone young actor archival portrait photograph",
+   "Rocky 1976 Sylvester Stallone behind the scenes photograph",
+   "Rocky Balboa boxing film production still real photograph",
+  ]
+ elif stallone:
+  target="Sylvester Stallone authentic archival portrait and film photograph"
+  preferred=[
+   "Sylvester Stallone real archival portrait photograph",
+   "Young Sylvester Stallone early career photograph",
+   "Sylvester Stallone behind the scenes film photograph",
+   "Sylvester Stallone candid press photograph",
+  ]
+ else:
+  anchor=project_target or context_target or scene_target
+  target=(anchor+" "+context_target).strip()[:220] or scene_target
+  preferred=[
+   (anchor+" documentary photograph").strip(),
+   (context_target+" authentic real photograph").strip(),
+   (project_target+" archival photograph").strip(),
+   (scene_target+" real documentary photograph").strip(),
+  ]
+ extras=[
+  gateway.translate_visual_query(scene_text),
+  gateway.translate_visual_query(title+" "+hook+" "+context),
+  gateway.translate_visual_query(title+" "+scene_text),
+  gateway.extract_keywords(title+" "+hook+" "+context),
+  gateway.extract_keywords(scene_text+" "+context),
+ ]
+ ordered=preferred+extras+[scene_target,context_target,project_target]
+ queries=[]
+ for value in ordered:
+  query=" ".join(str(value or "").split()).strip(" ,;")
+  if query and query.lower() not in {x.lower() for x in queries}:
+   queries.append(query[:180])
+ return target,queries
+
+
+def save_verified_review_options(job_id,index,ranked):
+ options=[]
+ for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
+  if source_info.get("visual_match_verified")!="true":continue
+  candidate_id=str(len(options)+1)
+  stored=upload_review_image(job_id,index+1,candidate_id,path)
+  options.append({"id":candidate_id,"asset":f"candidate-{index+1}-{candidate_id}","score":round(float(score),4),"title":source_info.get("title","Image"),"source":source_info.get("source","Open web"),"author":source_info.get("author","Unknown"),"license":source_info.get("license","Check source terms"),"license_url":source_info.get("license_url",""),"page_url":source_info.get("page_url",""),"size":stored["size"],"parts":stored["parts"]})
+ return options
+
+
 def make_text_groups(text):
  words=re.findall(r"\S+",str(text or ""))
  groups=[]
@@ -256,46 +317,12 @@ def prepare_review(job_id,meta,work,source=None):
  for index,group in enumerate(groups):
   scene_text=str(group.get("text","")).strip()
   context=" ".join(str(x.get("text","")) for x in groups[max(0,index-1):index+2])
-  # Keep the visual target short and entity-focused: CLIP has a 77-token
-  # text window, so long narration/context prompts can truncate the actual subject.
-  visual_target=gateway.english_visual_query(scene_text)
-  visual_target=re.sub(r"\bsilvestre\b","Sylvester",visual_target,flags=re.I)
-  visual_target=re.sub(r"\bsylvester\b(?!\s+stallone)","Sylvester Stallone",visual_target,flags=re.I)
-  lower_scene=scene_text.casefold()
-  # Turkish Whisper frequently mishears the proper name "Rocky" as "rakı".
-  # Correct this only in the visual-search intent; preserve the original transcript.
-  rocky_reference=bool(re.search(r"\brak[iı]\s+balboa\b|\brocky\s+balboa\b",lower_scene))
-  if rocky_reference:
-   visual_target="Rocky Balboa Sylvester Stallone boxing film character"
-  elif "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
-   visual_target="Sylvester Stallone arriving; Sylvester Stallone, Rocky actor"
-  if not visual_target:
-   visual_target=gateway.translate_visual_query(scene_text)[:180]
-  brief=("Narrated scene: "+scene_text+". Nearby context: "+context)[:420]
-  queries=[]
-  query_candidates=[
-   visual_target,
-   gateway.translate_visual_query(scene_text),
-   gateway.translate_visual_query(str(meta.get("title",""))+" "+scene_text),
-   gateway.extract_keywords(str(meta.get("title",""))+" "+scene_text),
-  ]
-  if rocky_reference:
-   query_candidates.extend([
-    "Rocky Balboa Sylvester Stallone boxing movie photograph",
-    "Sylvester Stallone Rocky Balboa film still boxing ring",
-    "Rocky Balboa 1976 film Sylvester Stallone real photograph",
-    "Sylvester Stallone as Rocky Balboa press photo"
-   ])
-  elif "stallone" in lower_scene or "silvestre" in lower_scene or "sylvester" in lower_scene:
-   query_candidates.extend(["Sylvester Stallone arriving","Sylvester Stallone Rocky actor photograph","Sylvester Stallone candid photo"])
-  for q in query_candidates:
-   q=" ".join(str(q or "").split())
-   if q and q.lower() not in [x.lower() for x in queries]:queries.append(q[:180])
+  # Query planning keeps the subject anchored to the project and nearby narration.
+  # A weak translation of a short connective sentence must not erase the named subject.
+  visual_target,queries=build_scene_visual_query_plan(scene_text,context,meta)
   pairs=[];seen=set()
-  # More focused query variants and a larger candidate pool prevent a single
-  # weak translation/search response from failing an otherwise valid scene.
-  # Bound search work per scene: query the strongest variants first and
-  # download a compact candidate set before CLIP verification.
+  # First pass is bounded. Only if strict CLIP verification finds no relevant
+  # real photos do we spend time on contextual fallback queries.
   for q in queries[:4]:
    candidates=query_cache.get(q)
    if candidates is None:
@@ -309,14 +336,24 @@ def prepare_review(job_id,meta,work,source=None):
     if len(pairs)>=16:break
    if len(pairs)>=16:break
   ranked=gateway.rank_scene_images(visual_target,pairs)
-  options=[]
-  for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
-   # CLIP ranker tags only verified visual matches.
-   if source_info.get("visual_match_verified")!="true":continue
-   candidate_id=str(len(options)+1)
-   stored=upload_review_image(job_id,index+1,candidate_id,path)
-   options.append({"id":candidate_id,"asset":f"candidate-{index+1}-{candidate_id}","score":round(float(score),4),"title":source_info.get("title","Image"),"source":source_info.get("source","Open web"),"author":source_info.get("author","Unknown"),"license":source_info.get("license","Check source terms"),"license_url":source_info.get("license_url",""),"page_url":source_info.get("page_url",""),"size":stored["size"],"parts":stored["parts"]})
-  if not options:raise RuntimeError("Sahne "+str(index+1)+" için görsel olarak doğrulanmış seçenek bulunamadı: "+scene_text[:140])
+  options=save_verified_review_options(job_id,index,ranked)
+  if not options:
+   # Fallback widens the subject context, not the visual acceptance rules.
+   for q in queries[4:8]:
+    candidates=query_cache.get(q)
+    if candidates is None:
+     candidates=gateway.search_public_assets(q,limit=18);query_cache[q]=candidates
+    for candidate in candidates[:12]:
+     url=str(candidate.get("url","")).strip()
+     if not url or url in seen:continue
+     seen.add(url)
+     path=gateway.download_image_asset(candidate,work,2000+index*100+len(pairs))
+     if path:pairs.append((path,candidate))
+     if len(pairs)>=40:break
+    if len(pairs)>=40:break
+   ranked=gateway.rank_scene_images(visual_target,pairs)
+   options=save_verified_review_options(job_id,index,ranked)
+  if not options:raise RuntimeError("Sahne "+str(index+1)+" için görsel olarak doğrulanmış fotoğraf bulunamadı: "+scene_text[:140])
   manifest["scenes"].append({"index":index+1,"start":round(float(group.get("start",0)),2),"end":round(float(group.get("end",0)),2),"text":scene_text,"options":options})
   update_status(job_id,status="processing",progress=15+int(65*(index+1)/len(groups)),message="Görseller araştırılıyor ("+str(index+1)+"/"+str(len(groups))+")")
  request_json("PUT",f"{api_base()}/{job_id}",json={"type":"review","manifest":manifest})
