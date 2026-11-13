@@ -88,6 +88,113 @@ def caption_lines(text: str, max_chars: int = 20, max_lines: int = 3) -> list[st
     return lines
 
 
+
+def normalize_turkish_caption(value: str) -> str:
+    """Normalize subtitle whitespace, punctuation spacing and sentence starts.
+
+    This is a conservative orthographic pass: it does not invent words or alter
+    names/meaning. Full lexical spelling verification needs a Turkish dictionary.
+    """
+    text = str(value or "").replace("\u00a0", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    text = re.sub(r"\s+([,.;:!?…])", r"\1", text)
+    text = re.sub(r"([,;:])(?=\S)", r"\1 ", text)
+    text = re.sub(r"([.!?…])(?=[^\s.!?…])", r"\1 ", text)
+    text = re.sub(r"\s*([–—])\s*", r" \1 ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    chars = list(text)
+    capitalize_next = True
+    for index, char in enumerate(chars):
+        if capitalize_next and char.isalpha():
+            if char == "i":
+                chars[index] = "İ"
+            else:
+                chars[index] = char.upper()
+            capitalize_next = False
+        if char in ".!?…":
+            capitalize_next = True
+    return "".join(chars)
+
+
+def scene_concept(text: str) -> str:
+    value = str(text or "").casefold()
+    concepts = [
+        ("reveal", ("ortaya çıktı", "ortaya cikti", "gizli gerçek", "gizli gercek", "keşfed", "kesfed", "fark edildi", "sır perdesi", "sir perdesi")),
+        ("warning", ("tehlike", "uyarı", "uyari", "yasak", "risk", "dikkat", "sakın", "sakin")),
+        ("explosion", ("patla", "yıkıldı", "yikildi", "çöktü", "coktu", "felaket", "devasa")),
+        ("chase", ("kaçtı", "kacti", "kovala", "peşinde", "pesinde", "yakala", "kaçış", "kacis")),
+        ("journey", ("yolculuk", "seyahat", "ulaştı", "ulasti", "gitti", "vardı", "vardi", "yol aldı", "yol aldi")),
+        ("invention", ("icat", "buluş", "bulus", "tasarla", "üretti", "uretti", "geliştirdi", "gelistirdi")),
+        ("victory", ("kazandı", "kazandi", "şampiyon", "sampiyon", "başardı", "basardi", "zafer", "rekor")),
+        ("money", ("milyon", "milyar", "servet", "para", "satın", "satin", "kazanç", "kazanc", "dolar")),
+        ("time", ("yıl sonra", "yil sonra", "yıllar önce", "yillar once", "dakika", "saniye", "zaman", "tarihinde")),
+        ("question", ("neden", "nasıl", "nasil", "kim", "gerçekten", "gercekten", "mı?", "mi?", "mu?", "mü?")),
+    ]
+    for concept, terms in concepts:
+        if any(term in value for term in terms):
+            return concept
+    return "explain"
+
+
+def _draw_scene_concept(draw: ImageDraw.ImageDraw, concept: str, t: float, seed: int) -> None:
+    """Add a phrase-specific animated foreground symbol to the scene illustration."""
+    cx = 60 + int(math.sin(t * 2.1 + seed) * 4)
+    cy = 47 + int(math.cos(t * 1.7 + seed) * 3)
+    pulse = int((math.sin(t * 5 + seed) + 1) * 2)
+    gold, cyan, coral = "#FFE15A", "#62E5F2", "#FF657A"
+    if concept == "reveal":
+        draw.ellipse((cx-27, cy-27, cx+27, cy+27), outline=gold, width=5)
+        draw.line((cx+18, cy+18, cx+38, cy+38), fill=gold, width=7)
+        draw.ellipse((cx-8, cy-8, cx+8, cy+8), fill="#FFFFFF")
+    elif concept == "warning":
+        draw.polygon([(cx,cy-34-pulse),(cx-34,cy+28),(cx+34,cy+28)], fill=gold, outline=coral)
+        draw.rectangle((cx-3,cy-15,cx+3,cy+7), fill="#20203A")
+        draw.ellipse((cx-3,cy+13,cx+3,cy+19), fill="#20203A")
+    elif concept == "explosion":
+        points=[]
+        for n in range(16):
+            angle=n*math.pi/8
+            radius=34 if n%2==0 else 17
+            points.append((cx+math.cos(angle)*radius,cy+math.sin(angle)*radius))
+        draw.polygon(points, fill=coral, outline=gold)
+        draw.ellipse((cx-8,cy-8,cx+8,cy+8), fill="#FFF5C4")
+    elif concept == "chase":
+        draw.ellipse((cx-22,cy-22,cx+5,cy+5), fill=gold)
+        draw.polygon([(cx+1,cy-10),(cx+30,cy-20),(cx+22,cy+8),(cx+2,cy+10)], fill=coral)
+        draw.line((cx-38,cy+20,cx-20,cy+12), fill=cyan, width=5)
+        draw.line((cx-42,cy+30,cx-23,cy+22), fill=cyan, width=4)
+    elif concept == "journey":
+        draw.line((cx-37,cy+23,cx-12,cy-8,cx+8,cy+7,cx+35,cy-27), fill=gold, width=6)
+        draw.polygon([(cx+35,cy-27),(cx+18,cy-24),(cx+31,cy-10)], fill=gold)
+        draw.ellipse((cx-43,cy+15,cx-31,cy+27), fill=coral)
+    elif concept == "invention":
+        draw.rectangle((cx-23,cy-20,cx+23,cy+20), outline=cyan, width=5)
+        for angle in range(0,360,45):
+            x1=cx+int(math.cos(math.radians(angle))*24)
+            y1=cy+int(math.sin(math.radians(angle))*24)
+            x2=cx+int(math.cos(math.radians(angle))*36)
+            y2=cy+int(math.sin(math.radians(angle))*36)
+            draw.line((x1,y1,x2,y2), fill=gold, width=4)
+        draw.ellipse((cx-7,cy-7,cx+7,cy+7), fill=coral)
+    elif concept == "victory":
+        draw.polygon([(cx-30,cy-24),(cx-14,cy-12),(cx,cy-31),(cx+14,cy-12),(cx+30,cy-24),(cx+23,cy+24),(cx-23,cy+24)], fill=gold)
+        draw.ellipse((cx-7,cy-7,cx+7,cy+7), fill="#FFFFFF")
+    elif concept == "money":
+        draw.rounded_rectangle((cx-28,cy-18,cx+28,cy+18), radius=5, fill="#4AD18A", outline=gold, width=4)
+        draw.ellipse((cx-9,cy-10,cx+9,cy+10), fill=gold)
+        draw.text((cx-5,cy-9), "$", fill="#163D39")
+    elif concept == "time":
+        draw.ellipse((cx-28,cy-28,cx+28,cy+28), outline=gold, width=5)
+        draw.line((cx,cy,cx,cy-17), fill="#FFFFFF", width=4)
+        draw.line((cx,cy,cx+15,cy+8), fill="#FFFFFF", width=4)
+    elif concept == "question":
+        draw.ellipse((cx-29,cy-29,cx+29,cy+29), outline=cyan, width=5)
+        draw.text((cx-9,cy-25), "?", fill=gold, font=ImageFont.load_default())
+    else:
+        draw.polygon([(cx,cy-29),(cx+8,cy-8),(cx+29,cy),(cx+8,cy+8),(cx,cy+29),(cx-8,cy+8),(cx-29,cy),(cx-8,cy-8)], fill=cyan, outline=gold)
+
 def _center_text(draw: ImageDraw.ImageDraw, text: str, y: int, font: ImageFont.ImageFont,
                  fill: str = "white", stroke: str = INK, stroke_width: int = 4) -> None:
     box = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
@@ -309,9 +416,10 @@ def _draw_window(canvas: Image.Image, kind: str, t: float, seed: int) -> None:
 
 
 def render_frame(scene: dict[str, Any], frame_in_scene: int, scene_frame_count: int,
-                 global_index: int, context: str = "") -> Image.Image:
+                 global_index: int, context: str = "", hook: str = "") -> Image.Image:
     seed = int(scene.get("index", global_index + 1)) * 137
     kind = str(scene.get("visual_kind") or infer_kind(str(scene.get("text", "")), context))
+    concept = str(scene.get("visual_concept") or scene_concept(str(scene.get("text", ""))))
     palette_index = (int(scene.get("index", global_index + 1)) - 1) % len(PALETTE)
     bg = PALETTE[palette_index]
     accent = "#1A1630" if palette_index in (1, 2, 4, 5, 6) else "#FFF2D0"
@@ -324,8 +432,12 @@ def render_frame(scene: dict[str, Any], frame_in_scene: int, scene_frame_count: 
     dash_x = 210 + int(math.sin(local_t * 3) * 14)
     draw.rounded_rectangle((dash_x, 502, dash_x + 120, 510), radius=4, fill=accent)
     _draw_window(canvas, kind, local_t, seed)
+    # Phrase-specific foreground illustration: the same broad topic gets a distinct action symbol per sentence.
+    concept_layer = Image.new("RGBA", (120, 94), (0, 0, 0, 0))
+    _draw_scene_concept(ImageDraw.Draw(concept_layer), concept, local_t, seed)
+    canvas.paste(concept_layer.resize((248, 194), Image.Resampling.NEAREST), ((WIDTH - 248) // 2, 241), concept_layer.resize((248, 194), Image.Resampling.NEAREST))
 
-    lines = caption_lines(str(scene.get("text", "")), max_chars=20, max_lines=3)
+    lines = caption_lines(normalize_turkish_caption(str(scene.get("text", ""))), max_chars=20, max_lines=3)
     font_size = 37 if len(lines) <= 2 else 33
     font = _font(font_size)
     line_height = 47 if font_size == 37 else 41
@@ -333,7 +445,16 @@ def render_frame(scene: dict[str, Any], frame_in_scene: int, scene_frame_count: 
     top = 624 + max(0, (155 - total_h) // 2)
     d = ImageDraw.Draw(canvas)
     for i, line in enumerate(lines):
-        _center_text(d, line.upper(), top + i * line_height, font, stroke_width=4)
+        _center_text(d, line, top + i * line_height, font, stroke_width=4)
+    # The hook is a separate opening overlay, not a replacement for spoken subtitles.
+    if hook and global_index == 0 and local_t < 1.8:
+        hook_text = normalize_turkish_caption(hook)
+        hook_lines = caption_lines(hook_text, max_chars=25, max_lines=2)
+        hook_font = _font(27)
+        hook_top = 76
+        d.rounded_rectangle((32, hook_top - 15, WIDTH - 32, hook_top + 88), radius=20, fill="#111027", outline="#FFE15A", width=3)
+        for hi, hline in enumerate(hook_lines):
+            _center_text(d, hline, hook_top + hi * 36, hook_font, fill="#FFE15A", stroke_width=2)
     sparkle_x = 85 + int((phase * 210) % 260)
     sparkle_y = 566 + int(math.sin(local_t * 3) * 5)
     d.ellipse((sparkle_x, sparkle_y, sparkle_x + 5, sparkle_y + 5), fill="#FFF4B4")
@@ -343,7 +464,7 @@ def render_frame(scene: dict[str, Any], frame_in_scene: int, scene_frame_count: 
 def render_animated_video(scenes: list[dict[str, Any]], voice_audio_path: str,
                           output_mp4_path: str, duration: float,
                           context: str = "", width: int = 1080, height: int = 1920,
-                          fps: int = FPS) -> Path:
+                          fps: int = FPS, hook: str = "") -> Path:
     if not scenes:
         raise ValueError("Animasyon için sahne bulunamadı.")
     if not Path(voice_audio_path).is_file():
@@ -388,7 +509,7 @@ def render_animated_video(scenes: list[dict[str, Any]], voice_audio_path: str,
         global_index = 0
         for scene, count in zip(scenes, frame_counts):
             for local_index in range(count):
-                frame = render_frame(scene, local_index, count, global_index, context)
+                frame = render_frame(scene, local_index, count, global_index, context, hook)
                 assert proc.stdin is not None
                 proc.stdin.write(frame.tobytes())
                 global_index += 1
