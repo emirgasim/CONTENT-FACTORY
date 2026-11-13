@@ -369,17 +369,17 @@ function drawFrame(ctx,w,h,time,duration,timeline,assets,title,styles,hook,motio
  const plaqueX=(w-plaqueWidth)/2,plaqueY=h*.735-plaqueHeight/2;
  rounded(ctx,plaqueX,plaqueY,plaqueWidth,plaqueHeight,w*.012,style.captionPlate);
  if(hook){
-  // Match the lower caption's bold face and calculated font size; the white pill hugs the text.
+  // Same bold font, point size and line rhythm as the lower caption; pill width follows text.
   ctx.font="900 "+font+"px system-ui, -apple-system, sans-serif";
   const hookLines=wrapLines(ctx,hook,w*.84,2);
   const hookLineHeight=font*1.14;
   const hookTextWidth=Math.max(0,...hookLines.map(line=>ctx.measureText(line).width));
-  const hookWidth=Math.min(w*.9,Math.max(w*.22,hookTextWidth+w*.06));
-  const hookHeight=hookLines.length*hookLineHeight+font*.62;
+  const hookWidth=Math.min(w*.9,hookTextWidth+w*.06);
+  const hookHeight=hookLines.length*hookLineHeight+font*.5;
   const hookX=(w-hookWidth)/2,hookY=h*.075;
   rounded(ctx,hookX,hookY,hookWidth,hookHeight,w*.018,"#FFFFFF");
   ctx.fillStyle="#101018";ctx.textAlign="center";ctx.textBaseline="middle";
-  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+font*.31+hookLineHeight*(i+.5)));
+  hookLines.forEach((line,i)=>ctx.fillText(line,w/2,hookY+font*.25+hookLineHeight*(i+.5)));
  }
  ctx.fillStyle=style.captionText;lines.forEach((line,i)=>ctx.fillText(line,w/2,plaqueY+font*.31+lineHeight*(i+.5)));
  const barH=Math.max(8,h*.009),barY=h*.982;ctx.fillStyle=style.progressTrack;ctx.fillRect(0,barY,w,barH);ctx.fillStyle=style.progressFill;ctx.fillRect(0,barY,w*progress,barH);
