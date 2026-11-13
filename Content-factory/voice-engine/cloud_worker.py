@@ -48,7 +48,7 @@ def render(job_id):
    original_update(current_id,**values)
    with gateway.JOBS_LOCK:snapshot=dict(gateway.JOBS.get(current_id,{}))
    if snapshot:
-    allowed=("status","progress","message","error","duration","removed_silence","scene_count","source_count")
+    allowed=("status","progress","message","error","duration","removed_silence","edit_cut_count","scene_count","source_count","caption_count","qc_duration_delta","edit_strategy")
     cloud_state={k:snapshot[k] for k in allowed if k in snapshot}
     # The local renderer uses "running"; the cloud job API uses "processing".
     if cloud_state.get("status")=="running":
