@@ -293,18 +293,20 @@ def prepare_review(job_id,meta,work,source=None):
   pairs=[];seen=set()
   # More focused query variants and a larger candidate pool prevent a single
   # weak translation/search response from failing an otherwise valid scene.
-  for q in queries[:8]:
+  # Bound search work per scene: query the strongest variants first and
+  # download a compact candidate set before CLIP verification.
+  for q in queries[:4]:
    candidates=query_cache.get(q)
    if candidates is None:
-    candidates=gateway.search_public_assets(q,limit=24);query_cache[q]=candidates
-   for candidate in candidates[:16]:
+    candidates=gateway.search_public_assets(q,limit=12);query_cache[q]=candidates
+   for candidate in candidates[:8]:
     url=str(candidate.get("url","")).strip()
     if not url or url in seen:continue
     seen.add(url)
     path=gateway.download_image_asset(candidate,work,1000+index*100+len(pairs))
     if path:pairs.append((path,candidate))
-    if len(pairs)>=36:break
-   if len(pairs)>=36:break
+    if len(pairs)>=16:break
+   if len(pairs)>=16:break
   ranked=gateway.rank_scene_images(visual_target,pairs)
   options=[]
   for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
