@@ -985,15 +985,14 @@ def create_fallback_visual_asset(text: str, directory: Path, index: int) -> tupl
     ]
     background, accent, light = palettes[digest[0] % len(palettes)]
     width, height = 1000, 1200
-    canvas = Image.new("RGB", (width, height), background)
-    pixels = canvas.load()
     start_rgb = tuple(int(background[i:i+2], 16) for i in (1, 3, 5))
     end_rgb = tuple(int(accent[i:i+2], 16) for i in (1, 3, 5))
-    for y in range(height):
-        blend = y / max(1, height - 1)
-        color = tuple(int(start_rgb[k] * (1-blend) + end_rgb[k] * blend * 0.38) for k in range(3))
-        for x in range(width):
-            pixels[x, y] = color
+    gradient = Image.new("RGB", (1, height))
+    gradient.putdata([
+        tuple(int(start_rgb[k] * (1 - y / max(1, height - 1)) + end_rgb[k] * (y / max(1, height - 1)) * 0.38) for k in range(3))
+        for y in range(height)
+    ])
+    canvas = gradient.resize((width, height), Image.Resampling.BILINEAR)
     draw = ImageDraw.Draw(canvas, "RGBA")
     draw.ellipse((560, -180, 1180, 440), outline=(255,255,255,42), width=5)
     draw.ellipse((610, -130, 1130, 390), outline=(255,255,255,26), width=3)
