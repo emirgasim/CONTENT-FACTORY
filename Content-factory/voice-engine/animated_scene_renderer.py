@@ -54,9 +54,15 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def infer_kind(text: str, context: str = "") -> str:
-    value = (str(text or "") + " " + str(context or "")).casefold()
+    # Prefer the current narration beat; use the project context only when the
+    # beat itself contains no recognizable subject clue.
+    local_value = str(text or "").casefold()
     for kind, words in KIND_PATTERNS:
-        if any(word in value for word in words):
+        if any(word in local_value for word in words):
+            return kind
+    context_value = str(context or "").casefold()
+    for kind, words in KIND_PATTERNS:
+        if any(word in context_value for word in words):
             return kind
     return "mystery"
 
