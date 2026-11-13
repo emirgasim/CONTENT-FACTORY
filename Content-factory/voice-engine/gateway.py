@@ -1086,7 +1086,7 @@ def render_short_job(job_id: str) -> None:
         if not topic_queries:
             topic_queries = [extract_keywords(title + " " + hook + " " + script[:300])]
 
-        for topic_query in topic_queries[:4]:
+        for topic_query in topic_queries[:2]:
             if not topic_query:
                 continue
             candidates = search_public_assets(topic_query, limit=36)
@@ -1133,9 +1133,7 @@ def render_short_job(job_id: str) -> None:
                     source_records.append(candidate)
                     downloaded_assets.append(selected)
                     break
-                if selected:
-                    break
-
+            
             # If a scene-specific query fails, use the best unused image from
             # the already verified pool for this same video's topic—not a random
             # internet image and never an unrelated search result.
@@ -1151,7 +1149,7 @@ def render_short_job(job_id: str) -> None:
                     ),
                     reverse=True,
                 )
-                selected = next((pair for pair in ranked_pool if pair[0] not in [x[0] for x in scene_assets]), None)
+                selected = next((pair for pair in ranked_pool if pair[0] not in [x[0][0] for x in scene_assets]), None)
                 if selected is None:
                     selected = ranked_pool[idx % len(ranked_pool)]
 
