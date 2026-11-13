@@ -51,7 +51,7 @@ def upload_review_image(job_id,scene,candidate,path):
 
 def make_sentence_groups(rows,duration):
  # Identical word-aligned visual beats are used for research and final render.
- # At 2.8 seconds maximum, a 40–45s narration normally yields about 15–16 shots.
+ # Each visual beat is capped for pacing; total narration duration is unrestricted.
  beats=gateway.build_visual_beats(rows,duration,max_words=7,max_seconds=2.8)
  scenes=[]
  for index,beat in enumerate(beats,1):
@@ -60,13 +60,6 @@ def make_sentence_groups(rows,duration):
   text=re.sub(r"\s+"," ",str(beat.get("text","")).strip())
   if text:scenes.append({"index":index,"start":round(start,3),"end":round(end,3),"duration":round(end-start,3),"text":text})
  return scenes
-
-def require_short_duration(duration,stage):
- if duration<40.0 or duration>45.0:
-  raise RuntimeError(
-   f"{stage}: temizlenmiş ses {duration:.1f} saniye. Bu proje için seslendirme 40–45 saniye olmalı. "
-   "Metni veya seslendirmeyi bu aralığa göre düzenleyip yeniden yükle; sistem konuşmayı keserek süreye zorlamaz."
-  )
 
 def download_external_image(url,destination):
  parsed=urlparse(url)
@@ -105,7 +98,6 @@ def render_approved_timeline(job_id,meta,work,source,selections):
  gateway.render_edited_audio(source,cleaned,edit_plan)
  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
  duration=gateway.probe_duration(cleaned)
- require_short_duration(duration,"Render öncesi kalite kontrolü")
  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için cümle tabanlı sahne zaman çizelgesi oluşturulamadı.")
  by_index={int(g["index"]):g for g in groups}
@@ -223,7 +215,6 @@ def prepare_review(job_id,meta,work,source):
  gateway.render_edited_audio(source,cleaned,edit_plan)
  rows=gateway.remap_rows_to_edited_timeline(rows,edit_plan)
  duration=gateway.probe_duration(cleaned)
- require_short_duration(duration,"Görsel araştırması")
  groups=make_sentence_groups(rows,duration)
  if not groups:raise RuntimeError("Ses için sahne zaman çizelgesi oluşturulamadı.")
  manifest={"hook":meta.get("hook",""),"duration":round(duration,2),"scenes":[]}
