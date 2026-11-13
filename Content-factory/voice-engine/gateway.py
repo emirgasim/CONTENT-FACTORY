@@ -914,7 +914,7 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
-    """Dynamic Shorts frame: full-screen relevant image, centered subtitles, no empty footer."""
+    """Bright kinetic editorial layout: hook top, stock visual center, captions below."""
     width, height = 1080, 1920
     if not assets:
         raise RuntimeError("Bu sahne için doğrulanmış görsel bulunamadı.")
@@ -924,46 +924,90 @@ def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[st
     except Exception as exc:
         raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
 
-    photo = Image.blend(photo, Image.new("RGB", (width, height), "#10151E"), 0.12)
-    canvas = photo.convert("RGBA")
-    shade = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    shade_draw = ImageDraw.Draw(shade)
-    shade_draw.rectangle((0, 0, width, 260), fill=(0, 0, 0, 70))
-    shade_draw.rectangle((0, 650, width, 1500), fill=(0, 0, 0, 24))
-    canvas = Image.alpha_composite(canvas, shade)
+    # Bold alternating palettes and geometric shapes, inspired by the supplied references.
+    palettes = [
+        ("#FFC928", "#FF4F83", "#5B35E8"),
+        ("#18C5E8", "#F04B24", "#FFD629"),
+        ("#35C84A", "#7C43F5", "#F8F8F8"),
+        ("#FF5AA8", "#FF8B24", "#1E9BE8"),
+        ("#8A5CFF", "#12BDE0", "#FFE02E"),
+        ("#FF6B36", "#31C96B", "#F44886"),
+    ]
+    bg, secondary, accent = palettes[index % len(palettes)]
+    canvas = Image.new("RGB", (width, height), bg)
     draw = ImageDraw.Draw(canvas)
 
-    # Hook appears only on the opening shot.
-    if index == 0 and hook:
-        hook_font = load_font(42)
-        hook_lines = wrap_lines(draw, re.sub(r"\\s+", " ", str(hook).strip()), hook_font, 900)[:2]
-        y = 100
-        for line in hook_lines:
-            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=1)
-            x = (width - (bbox[2] - bbox[0])) // 2
-            draw.text((x + 2, y + 2), line, font=hook_font, fill="#000000", stroke_width=3, stroke_fill="#000000")
-            draw.text((x, y), line, font=hook_font, fill="#FFFFFF", stroke_width=1, stroke_fill="#111111")
-            y += 56
+    # Large diagonal color field and oversized outlined geometry create motion between scenes.
+    draw.polygon([(760, 0), (width, 0), (width, 700), (560, 360)], fill=secondary)
+    draw.polygon([(0, 1180), (260, 1420), (0, 1650)], fill=accent)
+    draw.ellipse((790, 90, 1120, 420), outline=(255, 255, 255), width=9)
+    draw.ellipse((-130, 1390, 270, 1790), outline=(20, 20, 20), width=9)
+    draw.line((80, 300, 300, 80, 520, 300), fill=(255, 255, 255), width=8)
+    draw.line((790, 1380, 960, 1080, 1080, 1380), fill=(20, 20, 20), width=8)
+    draw.rectangle((875, 540, 1000, 665), outline=(255, 255, 255), width=8)
 
-    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(), max_words=12, max_chars=96)
-    words = caption.split()
-    font = load_font(70 if len(words) <= 8 else 62)
-    lines = wrap_lines(draw, caption, font, 900)[:3]
-    line_height = int(font.size * 1.18)
-    text_height = len(lines) * line_height
-    panel_width = min(990, max((draw.textbbox((0, 0), line, font=font)[2] for line in lines), default=500) + 72)
-    panel_height = text_height + 54
-    panel_left = (width - panel_width) // 2
-    panel_top = 1000 - panel_height // 2
-    draw_rounded_compat(draw, (panel_left, panel_top, panel_left + panel_width, panel_top + panel_height),
-                        radius=26, fill=(0, 0, 0, 168), outline=(255, 255, 255, 38), width=2)
-    y = panel_top + 27
+    # Hook area: centered, bold, readable and kept above the stock image.
+    title_font = load_font(34)
+    hook_font = load_font(62)
+    title_text = re.sub(r"\\s+", " ", str(title or "")).strip()[:54]
+    if title_text:
+        bbox = draw.textbbox((0, 0), title_text, font=title_font, stroke_width=1)
+        draw.text(((width - (bbox[2] - bbox[0])) // 2, 75), title_text,
+                  font=title_font, fill="#171717", stroke_width=1, stroke_fill="#FFFFFF")
+    hook_text = re.sub(r"\\s+", " ", str(hook or "")).strip()
+    if hook_text:
+        hook_lines = wrap_lines(draw, hook_text, hook_font, 920)[:3]
+        y = 150
+        for line in hook_lines:
+            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=2)
+            x = (width - (bbox[2] - bbox[0])) // 2
+            draw.text((x + 4, y + 5), line, font=hook_font, fill="#111111",
+                      stroke_width=5, stroke_fill="#111111")
+            draw.text((x, y), line, font=hook_font, fill="#FFFFFF",
+                      stroke_width=3, stroke_fill="#111111")
+            y += 76
+
+    # Central stock image card with a strong dark frame and subtle shadow.
+    image_box = (145, 430, 935, 1230)
+    shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow)
+    draw_rounded_compat(shadow_draw, (image_box[0] + 12, image_box[1] + 18,
+                        image_box[2] + 12, image_box[3] + 18),
+                        radius=42, fill=(0, 0, 0, 90))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), shadow)
+    draw = ImageDraw.Draw(canvas)
+    draw_rounded_compat(draw, image_box, radius=38, fill="#111827", outline="#111111", width=12)
+    inner = (image_box[0] + 16, image_box[1] + 16, image_box[2] - 16, image_box[3] - 16)
+    image = cover_image(photo, (inner[2] - inner[0], inner[3] - inner[1]))
+    mask = Image.new("L", (image.width, image.height), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle((0, 0, image.width - 1, image.height - 1), radius=25, fill=255)
+    canvas.paste(image.convert("RGBA"), (inner[0], inner[1]), mask)
+    draw = ImageDraw.Draw(canvas)
+
+    # Subtitle is below the image, in the reference's bold white-strip / black-type style.
+    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(),
+                                    max_words=15, max_chars=112)
+    caption_font = load_font(52 if len(caption.split()) <= 10 else 46)
+    lines = wrap_lines(draw, caption, caption_font, 970)[:4]
+    line_height = int(caption_font.size * 1.22)
+    total_height = len(lines) * line_height + max(0, len(lines) - 1) * 9
+    y = 1325 + max(0, (410 - total_height) // 2)
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=1)
-        x = (width - (bbox[2] - bbox[0])) // 2
-        draw.text((x + 2, y + 3), line, font=font, fill="#000000", stroke_width=3, stroke_fill="#000000")
-        draw.text((x, y), line, font=font, fill="#FFFFFF", stroke_width=1, stroke_fill="#171717")
-        y += line_height
+        bbox = draw.textbbox((0, 0), line, font=caption_font)
+        text_width = bbox[2] - bbox[0]
+        pad_x, pad_y = 17, 8
+        left = (width - text_width) // 2
+        draw.rectangle((left - pad_x, y - pad_y, left + text_width + pad_x, y + line_height - 5),
+                       fill="#FFFFFF")
+        draw.text((left, y), line, font=caption_font, fill="#111111")
+        y += line_height + 9
+
+    # A small accent marker echoes the reference without competing with the words.
+    marker_x, marker_y = 910, 1775
+    draw.ellipse((marker_x - 34, marker_y - 34, marker_x + 34, marker_y + 34), fill=accent, outline="#111111", width=5)
+    marker_font = load_font(48)
+    draw.text((marker_x - 12, marker_y - 31), "!", font=marker_font, fill="#111111")
     canvas.convert("RGB").save(output, quality=95)
 
 
