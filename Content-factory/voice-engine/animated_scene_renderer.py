@@ -7,6 +7,7 @@ No stock photos, web images, or external visual assets are used.
 from __future__ import annotations
 
 import math
+import re
 import os
 import random
 import subprocess
