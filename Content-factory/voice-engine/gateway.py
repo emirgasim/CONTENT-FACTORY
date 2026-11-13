@@ -917,6 +917,62 @@ def download_image_asset(item: dict[str, str], directory: Path, index: int) -> P
         raw_path.unlink(missing_ok=True)
 
 
+
+# Optional local CLIP vision-language reranker. It runs on CPU and downloads
+# open weights on first use; if unavailable, scene search fails closed to a
+# generated title card instead of silently substituting an unrelated photo.
+_CLIP_MODEL = None
+_CLIP_PROCESSOR = None
+_CLIP_LOCK = threading.Lock()
+
+
+def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]]) -> list[tuple[float, tuple[Path, dict[str, str]]]]:
+    if not candidates:
+        return []
+    try:
+        import torch
+        from transformers import CLIPModel, CLIPProcessor
+        global _CLIP_MODEL, _CLIP_PROCESSOR
+        with _CLIP_LOCK:
+            if _CLIP_MODEL is None:
+                model_name = os.getenv("VISUAL_MATCH_MODEL", "openai/clip-vit-base-patch32")
+                _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(model_name)
+                _CLIP_MODEL = CLIPModel.from_pretrained(model_name)
+                _CLIP_MODEL.eval()
+        images = []
+        valid = []
+        for pair in candidates:
+            try:
+                with Image.open(pair[0]) as image:
+                    images.append(image.convert("RGB").copy())
+                valid.append(pair)
+            except Exception:
+                continue
+        if not valid:
+            return []
+        prompts = [
+            "A real photograph illustrating this scene: " + str(query)[:400],
+            "A documentary image showing " + str(query)[:400],
+        ]
+        inputs = _CLIP_PROCESSOR(text=prompts, images=images, return_tensors="pt", padding=True)
+        with torch.inference_mode():
+            outputs = _CLIP_MODEL(**inputs)
+            image_features = outputs.image_embeds
+            text_features = outputs.text_embeds
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            similarities = (image_features @ text_features.T).max(dim=1).values.cpu().tolist()
+        ranked = sorted(zip(similarities, valid), key=lambda item: item[0], reverse=True)
+        print("[visual-match] CLIP scores:", [(round(float(score), 3), pair[1].get("title", "")[:70]) for score, pair in ranked[:5]])
+        return [(float(score), pair) for score, pair in ranked]
+    except Exception as exc:
+        print("[visual-match] local CLIP unavailable; using conservative metadata ranking:", type(exc).__name__, str(exc)[:240])
+        return sorted(
+            [(visual_relevance_score(query, pair[1]), pair) for pair in candidates],
+            key=lambda item: item[0],
+            reverse=True,
+        )
+
 def load_font(size: int, bold: bool = True):
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -1220,24 +1276,29 @@ def render_short_job(job_id: str) -> None:
                 break
 
         for idx, group in enumerate(groups):
-            scene_terms = english_visual_query(group["text"]) or extract_keywords(group["text"])
-            scene_query = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
-            selected: tuple[Path, dict[str, str]] | None = None
+            scene_text = re.sub(r"\s+", " ", str(group.get("text", "")).strip())
+            scene_terms = english_visual_query(scene_text) or extract_keywords(scene_text)
+            # Keep each search focused on the actual narration beat. Retry with
+            # a simpler query if the first result set is empty or irrelevant.
+            query_variants = []
+            for query in (scene_terms, english_visual_query(title + " " + scene_text), extract_keywords(scene_text)):
+                query = re.sub(r"\s+", " ", str(query or "")).strip()
+                if query and query.lower() not in {x.lower() for x in query_variants}:
+                    query_variants.append(query[:160])
 
-            # Search the live web for this narration beat, not only for the
-            # overall video topic. Cache repeated queries to avoid duplicate API
-            # calls; keep the broader topic pool as a secondary candidate source.
-            scene_query_en = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
-            if scene_query_en:
-                normalized_query = re.sub(r"\\s+", " ", scene_query_en.lower()).strip()
-                if normalized_query not in query_cache:
+            scene_pairs: list[tuple[Path, dict[str, str]]] = []
+            for query_attempt, scene_query in enumerate(query_variants[:3]):
+                cache_key = re.sub(r"\s+", " ", scene_query.lower()).strip()
+                candidates = query_cache.get(cache_key)
+                if candidates is None:
                     try:
-                        query_cache[normalized_query] = search_public_assets(scene_query_en, limit=18)
+                        candidates = search_public_assets(scene_query, limit=24)
+                        query_cache[cache_key] = candidates
                     except Exception as search_error:
                         print("[visual-search] scene query failed:", idx + 1, type(search_error).__name__, str(search_error)[:180])
-                        query_cache[normalized_query] = []
-                scene_candidates = query_cache.get(normalized_query, [])
-                for candidate in scene_candidates[:12]:
+                        candidates = []
+                        query_cache[cache_key] = []
+                for candidate in candidates[:16]:
                     url = str(candidate.get("url") or "").strip()
                     if not url or url in seen_asset_urls:
                         continue
@@ -1246,32 +1307,31 @@ def render_short_job(job_id: str) -> None:
                         continue
                     seen_asset_urls.add(url)
                     source_records.append(candidate)
-                    downloaded_assets.append((asset_path, candidate))
-                    if len(downloaded_assets) >= max(24, min(72, len(groups) * 3)):
-                        break
+                    pair = (asset_path, candidate)
+                    downloaded_assets.append(pair)
+                    scene_pairs.append(pair)
+                if len(scene_pairs) >= 3:
+                    break
+                print("[visual-search] retrying scene with alternate query:", idx + 1, query_attempt + 1, scene_query)
 
-            # Rank scene-specific live results first, then use the video-topic
-            # reserve only when the scene search did not return a credible match.
-            scene_tokens = set(re.findall(r"[a-z0-9]+", (scene_terms or "").lower()))
-            ranked_pool = sorted(
-                downloaded_assets,
-                key=lambda pair: (
-                    visual_relevance_score(scene_terms, pair[1]) * 4
-                    + visual_relevance_score(topic_anchor, pair[1])
-                    + len(scene_tokens & set(re.findall(
-                        r"[a-z0-9]+",
-                        " ".join([str(pair[1].get("title", "")), str(pair[1].get("page_url", ""))]).lower(),
-                    )))
-                ),
-                reverse=True,
-            )
-            used_paths = {item[0][0] for item in scene_assets}
-            if ranked_pool:
-                selected = next((pair for pair in ranked_pool if pair[0] not in used_paths), None)
-                if selected is None:
-                    selected = ranked_pool[idx % len(ranked_pool)]
+            # Rank only images discovered for this beat. Do not pull a random
+            # image from the video-wide reserve when scene relevance is weak.
+            ranked_scene = rank_scene_images(scene_text, scene_pairs)
+            if ranked_scene:
+                best_score, best_pair = ranked_scene[0]
+                # CLIP cosine similarity is normally in this range; lexical
+                # fallback scores are integer metadata overlap values.
+                min_score = 0.18 if isinstance(best_score, float) and best_score < 1 else 1
+                if best_score >= min_score:
+                    selected = best_pair
+                else:
+                    selected = None
+                    print("[visual-match] no candidate passed relevance threshold:", idx + 1, round(float(best_score), 3))
+            else:
+                selected = None
 
-            # User-supplied reference images remain the final intentional fallback.
+            # An explicitly uploaded reference image is allowed as a fallback;
+            # otherwise create a scene-specific graphic, never an unrelated photo.
             if selected is None and user_images:
                 own_path = user_images[idx % len(user_images)]
                 selected = (own_path, {
@@ -1286,14 +1346,9 @@ def render_short_job(job_id: str) -> None:
                 source_records.append(selected[1])
 
             if selected is None:
-                # Never stop the entire render because one scene has no stock image.
-                # Prefer a previously downloaded image from this same video's topic.
-                if downloaded_assets:
-                    selected = downloaded_assets[idx % len(downloaded_assets)]
-                else:
-                    selected = create_fallback_visual_asset(group.get("text", ""), work_dir, idx + 1)
-                    source_records.append(selected[1])
-                    print("[visual-search] using scene graphic fallback:", idx + 1, group.get("text", "")[:140])
+                selected = create_fallback_visual_asset(scene_text, work_dir, idx + 1)
+                source_records.append(selected[1])
+                print("[visual-search] no relevant photo; using scene title card:", idx + 1, scene_text[:140])
 
             scene_assets.append([selected])
             progress = 34 + int(32 * (idx + 1) / max(1, len(groups)))
