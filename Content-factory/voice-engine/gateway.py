@@ -914,103 +914,61 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
-    """Bright kinetic editorial layout: hook top, stock visual center, captions below."""
+    """Balanced 9:16 editorial frame with a contained photo and clean caption panel."""
     width, height = 1080, 1920
+    background = "#10151E"
+    panel = "#1A2230"
+    accent = "#E8B968"
     if not assets:
         raise RuntimeError("Bu sahne için doğrulanmış görsel bulunamadı.")
     try:
         with Image.open(assets[0][0]) as source:
-            photo = cover_image(source, (width, height))
+            photo = cover_image(source, (944, 790))
     except Exception as exc:
         raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
 
-    # Bold alternating palettes and geometric shapes, inspired by the supplied references.
-    palettes = [
-        ("#FFC928", "#FF4F83", "#5B35E8"),
-        ("#18C5E8", "#F04B24", "#FFD629"),
-        ("#35C84A", "#7C43F5", "#F8F8F8"),
-        ("#FF5AA8", "#FF8B24", "#1E9BE8"),
-        ("#8A5CFF", "#12BDE0", "#FFE02E"),
-        ("#FF6B36", "#31C96B", "#F44886"),
-    ]
-    bg, secondary, accent = palettes[index % len(palettes)]
-    canvas = Image.new("RGB", (width, height), bg)
+    canvas = Image.new("RGB", (width, height), background)
     draw = ImageDraw.Draw(canvas)
 
-    # Large diagonal color field and oversized outlined geometry create motion between scenes.
-    draw.polygon([(760, 0), (width, 0), (width, 700), (560, 360)], fill=secondary)
-    draw.polygon([(0, 1180), (260, 1420), (0, 1650)], fill=accent)
-    draw.ellipse((790, 90, 1120, 420), outline=(255, 255, 255), width=9)
-    draw.ellipse((-130, 1390, 270, 1790), outline=(20, 20, 20), width=9)
-    draw.line((80, 300, 300, 80, 520, 300), fill=(255, 255, 255), width=8)
-    draw.line((790, 1380, 960, 1080, 1080, 1380), fill=(20, 20, 20), width=8)
-    draw.rectangle((875, 540, 1000, 665), outline=(255, 255, 255), width=8)
-
-    # Hook area: centered, bold, readable and kept above the stock image.
-    title_font = load_font(34)
-    hook_font = load_font(62)
-    title_text = re.sub(r"\\s+", " ", str(title or "")).strip()[:54]
-    if title_text:
-        bbox = draw.textbbox((0, 0), title_text, font=title_font, stroke_width=1)
-        draw.text(((width - (bbox[2] - bbox[0])) // 2, 75), title_text,
-                  font=title_font, fill="#171717", stroke_width=1, stroke_fill="#FFFFFF")
-    hook_text = re.sub(r"\\s+", " ", str(hook or "")).strip()
-    if hook_text:
-        hook_lines = wrap_lines(draw, hook_text, hook_font, 920)[:3]
-        y = 150
+    # Topic title remains subtle; the hook appears only on the opening shot.
+    eyebrow = load_font(30)
+    draw.text((68, 58), re.sub(r"\s+", " ", str(title or "SHORTS")).strip()[:72], font=eyebrow, fill="#B9C4D3")
+    draw.rectangle((68, 112, 1012, 118), fill=accent)
+    if index == 0 and hook:
+        hook_font = load_font(42)
+        hook_lines = wrap_lines(draw, re.sub(r"\s+", " ", str(hook).strip()), hook_font, 920)[:2]
+        y = 142
         for line in hook_lines:
-            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=2)
-            x = (width - (bbox[2] - bbox[0])) // 2
-            draw.text((x + 4, y + 5), line, font=hook_font, fill="#111111",
-                      stroke_width=5, stroke_fill="#111111")
-            draw.text((x, y), line, font=hook_font, fill="#FFFFFF",
-                      stroke_width=3, stroke_fill="#111111")
-            y += 76
+            draw.text((72, y), line, font=hook_font, fill="#F6F7FA")
+            y += 52
 
-    # Central stock image card with a strong dark frame and subtle shadow.
-    image_box = (145, 430, 935, 1230)
-    shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    shadow_draw = ImageDraw.Draw(shadow)
-    draw_rounded_compat(shadow_draw, (image_box[0] + 12, image_box[1] + 18,
-                        image_box[2] + 12, image_box[3] + 18),
-                        radius=42, fill=(0, 0, 0, 90))
-    canvas = Image.alpha_composite(canvas.convert("RGBA"), shadow)
+    # The photo is contained rather than filling the entire screen.
+    image_box = (68, 250, 1012, 1040)
+    canvas.paste(photo, (image_box[0], image_box[1]))
     draw = ImageDraw.Draw(canvas)
-    draw_rounded_compat(draw, image_box, radius=38, fill="#111827", outline="#111111", width=12)
-    inner = (image_box[0] + 16, image_box[1] + 16, image_box[2] - 16, image_box[3] - 16)
-    image = cover_image(photo, (inner[2] - inner[0], inner[3] - inner[1]))
-    mask = Image.new("L", (image.width, image.height), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle((0, 0, image.width - 1, image.height - 1), radius=25, fill=255)
-    canvas.paste(image.convert("RGBA"), (inner[0], inner[1]), mask)
-    draw = ImageDraw.Draw(canvas)
+    draw_rounded_compat(draw, image_box, radius=26, outline="#344052", width=3)
 
-    # Subtitle is below the image, in the reference's bold white-strip / black-type style.
-    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(),
-                                    max_words=15, max_chars=112)
-    caption_font = load_font(52 if len(caption.split()) <= 10 else 46)
-    lines = wrap_lines(draw, caption, caption_font, 970)[:4]
+    # The caption panel begins immediately below the image: no empty black footer.
+    panel_box = (68, 1044, 1012, 1810)
+    draw_rounded_compat(draw, panel_box, radius=28, fill=panel, outline="#293648", width=2)
+    draw.rounded_rectangle((108, 1120, 118, 1730), radius=5, fill=accent)
+
+    caption = compact_scene_caption(
+        (group.get("text") or title or "Öne çıkan detay").strip(),
+        max_words=15,
+        max_chars=120,
+    )
+    words = caption.split()
+    caption_font = load_font(60 if len(words) <= 10 else 54)
+    lines = wrap_lines(draw, caption, caption_font, 810)[:4]
     line_height = int(caption_font.size * 1.22)
-    total_height = len(lines) * line_height + max(0, len(lines) - 1) * 9
-    y = 1325 + max(0, (410 - total_height) // 2)
+    total_height = len(lines) * line_height
+    y = panel_box[1] + max(58, (panel_box[3] - panel_box[1] - total_height) // 2)
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=caption_font)
-        text_width = bbox[2] - bbox[0]
-        pad_x, pad_y = 17, 8
-        left = (width - text_width) // 2
-        draw.rectangle((left - pad_x, y - pad_y, left + text_width + pad_x, y + line_height - 5),
-                       fill="#FFFFFF")
-        draw.text((left, y), line, font=caption_font, fill="#111111")
-        y += line_height + 9
+        draw.text((154, y), line, font=caption_font, fill="#F3F5F8")
+        y += line_height
 
-    # A small accent marker echoes the reference without competing with the words.
-    marker_x, marker_y = 910, 1775
-    draw.ellipse((marker_x - 34, marker_y - 34, marker_x + 34, marker_y + 34), fill=accent, outline="#111111", width=5)
-    marker_font = load_font(48)
-    draw.text((marker_x - 12, marker_y - 31), "!", font=marker_font, fill="#111111")
-    canvas.convert("RGB").save(output, quality=95)
-
-
+    canvas.save(output, quality=95)
 
 def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
     # Alternating slow push-in / pull-out with gentle horizontal drift.
@@ -1067,83 +1025,61 @@ def render_short_job(job_id: str) -> None:
                 except Exception:
                     pass
 
-        # Search separately for each narration beat. A topic-only pool caused the
-        # same few photos to repeat across scenes and across different renders.
-        stock_pool: list[tuple[Path, dict[str, str]]] = []
+        # Search and select an image for each narration beat independently.
+        # Never fill a missing scene with a random image found for a different line.
         seen_asset_urls: set[str] = set()
-        scene_asset_map: list[tuple[Path, dict[str, str]] | None] = []
-        scene_queries = []
-        for group in groups:
-            query = english_visual_query(title + " " + group["text"]) or extract_keywords(group["text"])
-            if query:
-                scene_queries.append(query)
-        # Search the actual scene phrase first, then broaden with topic context.
+        topic_anchor = english_visual_query(title + " " + hook)
         for idx, group in enumerate(groups):
-            query = english_visual_query(group["text"]) or extract_keywords(group["text"])
-            if title:
-                query = (query + " " + english_visual_query(title))[:180].strip()
-            selected = None
-            for candidate in search_public_assets(query, limit=30):
-                url = candidate.get("url", "")
-                if not url or url in seen_asset_urls:
-                    continue
-                asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
-                if not asset_path:
-                    continue
-                selected = (asset_path, candidate)
-                seen_asset_urls.add(url)
-                stock_pool.append(selected)
-                source_records.append(candidate)
-                break
-            scene_asset_map.append(selected)
+            scene_terms = english_visual_query(group["text"]) or extract_keywords(group["text"])
+            scene_query = " ".join(x for x in (topic_anchor, scene_terms) if x).strip()[:180]
+            selected: tuple[Path, dict[str, str]] | None = None
 
-        # If a scene-specific search fails, broaden to the hook/topic but keep all
-        # results unique. Randomize the fallback pool per job to avoid a fixed sequence.
-        if len(stock_pool) < len(groups):
-            broad_queries = visual_search_queries(title, hook, script)
-            random.Random(job_id).shuffle(broad_queries)
-            for query in broad_queries:
-                for candidate in search_public_assets(query, limit=30):
-                    url = candidate.get("url", "")
+            for candidate_query in [scene_query, topic_anchor]:
+                if not candidate_query:
+                    continue
+                for candidate in search_public_assets(candidate_query, limit=40):
+                    url = str(candidate.get("url") or "").strip()
                     if not url or url in seen_asset_urls:
+                        continue
+                    if visual_relevance_score(candidate_query, candidate) < 2:
                         continue
                     asset_path = download_image_asset(candidate, work_dir, len(source_records) + 1)
                     if not asset_path:
                         continue
+                    selected = (asset_path, candidate)
                     seen_asset_urls.add(url)
-                    stock_pool.append((asset_path, candidate))
                     source_records.append(candidate)
-                    if len(stock_pool) >= len(groups):
-                        break
-                if len(stock_pool) >= len(groups):
+                    break
+                if selected:
                     break
 
-        # Assign each scene a different photo whenever the catalog provides one.
-        unused = list(stock_pool)
-        random.Random(job_id).shuffle(unused)
-        for idx, group in enumerate(groups):
-            chosen: list[tuple[Path, dict[str, str]]] = []
-            preferred = scene_asset_map[idx] if idx < len(scene_asset_map) else None
-            if preferred:
-                chosen.append(preferred)
-                unused = [item for item in unused if item[1].get("url") != preferred[1].get("url")]
-            elif unused:
-                chosen.append(unused.pop())
-            elif stock_pool:
-                # Only repeat after every unique available asset has been used.
-                chosen.append(stock_pool[idx % len(stock_pool)])
-            if user_images:
+            # User-supplied reference images are trusted as intentional inputs.
+            if selected is None and user_images:
                 own_path = user_images[idx % len(user_images)]
-                chosen.append((own_path, {
-                    "title": own_path.name, "author": "User supplied",
+                selected = (own_path, {
+                    "title": own_path.name,
+                    "author": "User supplied",
                     "license": "User supplied; verify your own rights",
-                    "license_url": "", "page_url": "", "source": "User upload",
-                }))
-            scene_assets.append(chosen)
+                    "license_url": "",
+                    "page_url": "",
+                    "url": "",
+                    "source": "User upload",
+                })
+                source_records.append(selected[1])
+
+            if selected is None:
+                raise RuntimeError(
+                    "Sahne " + str(idx + 1) + "/" + str(len(groups)) +
+                    " için konuyla ilgili doğrulanmış görsel bulunamadı. Sistem alakasız bir görsel kullanarak videoyu tamamlamayacak."
+                )
+
+            scene_assets.append([selected])
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
-            update_job(job_id, progress=progress, message="Her sahne için farklı kaynaklardan görsel aranıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
-        if not stock_pool:
-            raise RuntimeError("Web kaynaklarından indirilebilir ve doğrulanabilir görsel alınamadı. Arama servisleri geçici olarak erişimi engellemiş olabilir; yeniden dene.")
+            update_job(
+                job_id,
+                progress=progress,
+                message="Her sahne için alakalı görsel doğrulanıyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")",
+            )
 
         clips = []
         total_duration = duration
