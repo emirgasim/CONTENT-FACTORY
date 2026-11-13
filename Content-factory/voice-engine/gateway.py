@@ -222,31 +222,63 @@ async def job_credits(job_id: str, _auth: None = __import__("fastapi").Depends(r
 
 
 def trim_silence(source: Path, output: Path) -> float:
-    # Short pauses under 550 ms remain; 120 ms of room remains around longer pauses.
+    """Remove leading silence and shorten long pauses before transcription and scene timing."""
     filt = (
-        "silenceremove=start_periods=1:start_duration=0.55:start_threshold=-45dB:"
-        "stop_periods=-1:stop_duration=0.55:stop_threshold=-45dB:stop_silence=0.12"
+        "silenceremove=start_periods=1:start_duration=0.12:start_threshold=-42dB:"
+        "start_silence=0.04:stop_periods=-1:stop_duration=0.28:"
+        "stop_threshold=-42dB:stop_silence=0.10:detection=rms:window=0.02"
     )
     result = run_command([
-        "ffmpeg", "-y", "-i", str(source), "-af", filt,
+        "ffmpeg", "-y", "-i", str(source), "-vn", "-af", filt,
         "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(output)
-    ], timeout=180)
+    ], timeout=240)
     if result.returncode != 0 or not output.exists() or output.stat().st_size < 1024:
         shutil.copy2(source, output)
-    return max(0.0, probe_duration(source) - probe_duration(output))
-
+    original_duration = probe_duration(source)
+    cleaned_duration = probe_duration(output)
+    if cleaned_duration > original_duration + 0.05:
+        shutil.copy2(source, output)
+        cleaned_duration = original_duration
+    return max(0.0, original_duration - cleaned_duration)
 
 def transcribe_audio(audio_path: Path) -> list[dict[str, Any]]:
+    """Transcribe with word timings so long narration is split into short visual beats."""
     from faster_whisper import WhisperModel
     model = WhisperModel(ASR_MODEL, device="cpu", compute_type="int8", cpu_threads=max(1, int(os.getenv("CPU_THREADS", "2"))))
-    segments, _info = model.transcribe(str(audio_path), language="tr", beam_size=1, vad_filter=True, word_timestamps=False)
-    rows = []
+    segments, _info = model.transcribe(
+        str(audio_path), language="tr", beam_size=1, vad_filter=True,
+        word_timestamps=True, condition_on_previous_text=False
+    )
+    rows: list[dict[str, Any]] = []
     for seg in segments:
-        text = (seg.text or "").strip()
-        if text and float(seg.end) > float(seg.start):
-            rows.append({"start": float(seg.start), "end": float(seg.end), "text": text})
+        words = list(getattr(seg, "words", None) or [])
+        if not words:
+            text = (seg.text or "").strip()
+            if text and float(seg.end) > float(seg.start):
+                rows.append({"start": float(seg.start), "end": float(seg.end), "text": text})
+            continue
+        chunk: list[Any] = []
+        chunk_start = float(words[0].start or seg.start)
+        for word in words:
+            token = str(word.word or "").strip()
+            if not token:
+                continue
+            if not chunk:
+                chunk_start = float(word.start if word.start is not None else seg.start)
+            chunk.append(word)
+            chunk_end = float(word.end if word.end is not None else seg.end)
+            phrase = "".join(str(x.word or "") for x in chunk).strip()
+            sentence_end = bool(re.search(r"[.!?…][\"')\]]?$", token))
+            if len(chunk) >= 8 or chunk_end - chunk_start >= 4.2 or sentence_end:
+                if phrase:
+                    rows.append({"start": chunk_start, "end": max(chunk_start + 0.08, chunk_end), "text": phrase})
+                chunk = []
+        if chunk:
+            chunk_end = float(chunk[-1].end if chunk[-1].end is not None else seg.end)
+            phrase = "".join(str(x.word or "") for x in chunk).strip()
+            if phrase:
+                rows.append({"start": chunk_start, "end": max(chunk_start + 0.08, chunk_end), "text": phrase})
     return rows
-
 
 def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
@@ -266,23 +298,31 @@ def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
 
 
 def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float | None = None) -> list[dict[str, Any]]:
-    """Create one visual beat per transcript sentence/utterance; no fixed scene-count or seconds cap."""
+    """Split narration into short, readable phrases so the visuals and accent colors keep changing."""
     groups: list[dict[str, Any]] = []
     for row in rows:
         text = re.sub(r"\s+", " ", str(row.get("text", "")).strip())
         start = max(0.0, float(row.get("start", 0.0)))
-        end = min(duration, max(start + 0.05, float(row.get("end", start + 0.5))))
+        end = min(duration, max(start + 0.08, float(row.get("end", start + 0.5))))
         if not text:
             continue
-        parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
-        if not parts:
-            parts = [text]
-        weights = [max(1, len(part.split())) for part in parts]
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?;])\s+|(?<=[,])\s+", text) if part.strip()]
+        chunks: list[str] = []
+        for sentence in sentences or [text]:
+            tokens = sentence.split()
+            while len(tokens) > 8:
+                chunks.append(" ".join(tokens[:8]))
+                tokens = tokens[8:]
+            if tokens:
+                chunks.append(" ".join(tokens))
+        if not chunks:
+            chunks = [text]
+        weights = [max(1, len(part.split())) for part in chunks]
         total = sum(weights)
         cursor = start
-        span = max(0.05, end - start)
-        for index, (part, weight) in enumerate(zip(parts, weights)):
-            part_end = end if index == len(parts) - 1 else cursor + span * weight / total
+        span = max(0.08, end - start)
+        for index, (part, weight) in enumerate(zip(chunks, weights)):
+            part_end = end if index == len(chunks) - 1 else cursor + span * weight / total
             groups.append({"start": cursor, "end": part_end, "text": part})
             cursor = part_end
     if not groups:
@@ -291,11 +331,10 @@ def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_second
     groups[-1]["end"] = duration
     for index, group in enumerate(groups):
         group["start"] = max(0.0, min(duration, float(group["start"])))
-        group["end"] = max(group["start"] + 0.05, min(duration, float(group["end"])))
+        group["end"] = max(group["start"] + 0.08, min(duration, float(group["end"])))
         if index:
-            group["start"] = max(group["start"], groups[index - 1]["end"] - 0.04)
+            group["start"] = max(group["start"], groups[index - 1]["end"] - 0.03)
     return groups
-
 
 def plain_text(value: Any) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
@@ -447,6 +486,82 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
     return results
 
 
+VISUAL_ENGLISH_WORDS = {
+    "köpek": "dog", "köpeği": "dog", "köpeğin": "dog", "köpekler": "dogs",
+    "köpeklerin": "dogs", "kedi": "cat", "kedisi": "cat", "kediler": "cats",
+    "stallone": "Sylvester Stallone", "senaryo": "screenplay", "senaryoyu": "screenplay",
+    "oyuncu": "actor", "oyuncunun": "actor", "film": "film", "filmi": "film",
+    "dolar": "money", "para": "money", "teklif": "offer", "tarih": "history",
+    "tarihi": "historical", "savaş": "war", "savaşı": "war", "uçak": "aircraft",
+    "uzay": "space", "gezegen": "planet", "şehir": "city", "araba": "car",
+    "otomobil": "car", "insan": "person", "insanlar": "people", "hayvan": "animal",
+    "hayvanlar": "animals", "deniz": "sea", "okyanus": "ocean", "bilim": "science",
+    "teknoloji": "technology", "robot": "robot", "robotlar": "robots",
+    "deprem": "earthquake", "yangın": "fire", "orman": "forest", "kaza": "accident",
+    "spor": "sports", "futbol": "football", "müzik": "music", "sanat": "art",
+    "mısır": "Egypt", "roma": "Rome", "paris": "Paris", "istanbul": "Istanbul"
+}
+VISUAL_QUERY_STOP = STOP_WORDS | {"nin", "nın", "nun", "nün", "ın", "in", "un", "ün", "a", "e", "ya", "ye", "dan", "den", "dır", "dir", "dır", "dur", "dır"}
+
+
+def english_visual_query(text: str) -> str:
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9']+", (text or "").lower())
+    output: list[str] = []
+    for token in tokens:
+        token = token.strip("'")
+        if len(token) < 3 or token in VISUAL_QUERY_STOP:
+            continue
+        translated = VISUAL_ENGLISH_WORDS.get(token, token)
+        if translated not in output:
+            output.append(translated)
+        if len(output) >= 9:
+            break
+    return " ".join(output)
+
+
+def visual_search_queries(title: str, hook: str, script: str) -> list[str]:
+    candidates = [
+        english_visual_query(title),
+        english_visual_query(hook),
+        english_visual_query(title + " " + script[:260]),
+        extract_keywords(title + " " + hook),
+    ]
+    result: list[str] = []
+    for candidate in candidates:
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        if candidate and candidate.lower() not in {x.lower() for x in result}:
+            result.append(candidate)
+    return result
+
+
+def compact_scene_caption(text: str, max_words: int = 7, max_chars: int = 62) -> str:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    value = re.sub(r"^[\s•–—-]+", "", value)
+    words = value.split()
+    truncated = len(words) > max_words
+    words = words[:max_words]
+    value = " ".join(words)
+    if len(value) > max_chars:
+        value = value[:max_chars].rsplit(" ", 1)[0].rstrip(" ,;:")
+        truncated = True
+    if truncated:
+        value = value.rstrip(" ,;:.") + "…"
+    return value or "Öne çıkan detay"
+
+
+def draw_centered_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, box, fill: str, max_lines: int = 2) -> None:
+    left, top, right, bottom = box
+    lines = wrap_lines(draw, text, font, right - left - 54)[:max_lines]
+    line_height = int(font.size * 1.12)
+    total_height = len(lines) * line_height
+    y = top + max(0, (bottom - top - total_height) // 2)
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        x = left + max(0, (right - left - (bbox[2] - bbox[0])) // 2)
+        draw.text((x, y), line, font=font, fill=fill)
+        y += line_height
+
+
 def extract_keywords(text: str) -> str:
     words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", (text or "").lower())
     selected = []
@@ -536,76 +651,70 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
     width, height = 1080, 1920
-    color = PALETTE[index % len(PALETTE)]
-    text = (group.get("text") or title or "Bilinmeyen gerçekler").strip()
-    bg_asset = None
-    second_asset = None
+    accent = PALETTE[(index * 3 + 2) % len(PALETTE)]
+    accent_alt = PALETTE[(index * 3 + 6) % len(PALETTE)]
+    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip())
+
+    primary_asset = None
+    secondary_asset = None
     if assets:
         try:
-            bg_asset = Image.open(assets[0][0]).convert("RGB")
+            primary_asset = Image.open(assets[0][0]).convert("RGB")
         except Exception:
-            bg_asset = None
+            primary_asset = None
     if len(assets) > 1:
         try:
-            second_asset = Image.open(assets[1][0]).convert("RGB")
+            secondary_asset = Image.open(assets[1][0]).convert("RGB")
         except Exception:
-            second_asset = None
-    canvas = Image.new("RGB", (width, height), color)
-    draw = ImageDraw.Draw(canvas)
-    is_numeric = bool(re.search(r"\d", text))
-    is_compare = any(k in text.lower() for k in (" karşı ", " versus ", " ile ", " fark ", " önce ", " sonra ", " vs "))
-    layout = "infographic" if is_numeric else ("split" if is_compare or index % 4 == 1 else ("collage" if second_asset is not None and index % 3 == 0 else "full"))
-    title_font = load_font(78)
-    small_font = load_font(30)
-    if layout == "full" and bg_asset is not None:
-        photo = cover_image(bg_asset, (width, height))
-        canvas.paste(photo)
-        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        od = ImageDraw.Draw(overlay)
-        od.rectangle((0, 0, width, 245), fill=(10, 12, 20, 185))
-        od.rectangle((0, 1390, width, height), fill=(10, 12, 20, 205))
-        canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
-        draw = ImageDraw.Draw(canvas)
-        draw_rounded_compat(draw,(55, 60, 520, 155), radius=35, fill=color)
-        draw.text((90, 79), "BİLİNMEYEN GERÇEK", font=small_font, fill="#141414")
-        draw_wrapped(draw, text, title_font, 58, 1480, 960, "white", 4)
-    elif layout == "split" and bg_asset is not None:
-        photo = cover_image(bg_asset, (650, height))
-        canvas.paste(photo, (0, 0))
-        draw.rectangle((650, 0, width, height), fill=color)
-        draw.rectangle((0, 0, 650, 180), fill="#12141D")
-        draw.text((44, 60), "GERÇEK / DETAY", font=small_font, fill="white")
-        draw_wrapped(draw, text, load_font(58), 690, 580, 340, "#121212", 7)
-        draw_rounded_compat(draw,(690, 1510, 1030, 1800), radius=45, fill="#12141D")
-        draw.text((730, 1580), "DEVAMINI", font=load_font(38), fill="white")
-        draw.text((730, 1640), "KEŞFET", font=load_font(54), fill=color)
-    elif layout == "collage":
-        draw.rectangle((0, 0, width, height), fill=color)
-        if bg_asset is not None:
-            canvas.paste(cover_image(bg_asset, (width - 100, 760)), (50, 70))
-        if second_asset is not None:
-            canvas.paste(cover_image(second_asset, (470, 530)), (70, 910))
-        draw_rounded_compat(draw,(565, 930, 1010, 1460), radius=34, fill="#171923")
-        draw_wrapped(draw, text, load_font(46), 605, 1010, 360, "white", 6)
-        draw.text((60, 1630), "BİR DETAY HER ŞEYİ DEĞİŞTİRİR", font=load_font(34), fill="#171923")
-    else:
-        draw.rectangle((0, 0, width, height), fill=color)
-        if bg_asset is not None:
-            photo = cover_image(bg_asset, (780, 700))
-            canvas.paste(photo, (150, 170))
-            draw_rounded_compat(draw,(120, 130, 960, 940), radius=34, outline="#151515", width=14)
-        draw.ellipse((770, 1000, 1030, 1260), fill="#FF9C69", outline="#151515", width=8)
-        draw.text((835, 1075), "!", font=load_font(130), fill="#151515")
-        draw_wrapped(draw, text, load_font(76), 65, 1320, 950, "#151515", 5)
-        draw_rounded_compat(draw,(60, 1770, 700, 1870), radius=35, fill="#151515")
-        draw.text((100, 1797), "BİLGİ · MERAK · KEŞİF", font=small_font, fill="white")
-    if hook:
-        banner = PALETTE[(index + 2) % len(PALETTE)]
-        draw = ImageDraw.Draw(canvas)
-        draw.rectangle((0, 0, width, 145), fill=banner)
-        draw_wrapped(draw, hook, load_font(54), 48, 28, 980, "#101018", 2)
-    canvas.save(output, quality=92)
+            secondary_asset = None
 
+    canvas = Image.new("RGB", (width, height), accent)
+    draw = ImageDraw.Draw(canvas)
+
+    # Hero stock photo occupies a large, unmistakable area of every scene.
+    if primary_asset is not None:
+        canvas.paste(cover_image(primary_asset, (width, 900)), (0, 405))
+        overlay = Image.new("RGBA", (width, 900), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        od.rectangle((0, 0, width, 140), fill=(10, 12, 20, 60))
+        canvas.paste(Image.alpha_composite(canvas.crop((0, 405, width, 1305)).convert("RGBA"), overlay).convert("RGB"), (0, 405))
+    else:
+        # A designed fallback is used only when no reusable stock image can be fetched.
+        draw.rectangle((0, 405, width, 1305), fill=accent_alt)
+        for radius, x, y in [(350, 250, 760), (250, 820, 980), (180, 550, 590)]:
+            draw.ellipse((x-radius, y-radius, x+radius, y+radius), outline="#FFFFFF", width=14)
+        draw.line((80, 1190, 1000, 500), fill="#FFFFFF", width=18)
+
+    # Compact editorial title band.
+    draw.rectangle((0, 0, width, 205), fill=accent)
+    title_font = load_font(58)
+    title_text = compact_scene_caption(title, max_words=6, max_chars=34)
+    title_lines = wrap_lines(draw, title_text, title_font, 950)[:2]
+    y = 38 if len(title_lines) == 1 else 22
+    for line in title_lines:
+        draw.text((55, y), line, font=title_font, fill="#111111")
+        y += 66
+
+    # Hook: one slim, white rounded window, slightly below the top edge.
+    if hook:
+        draw_rounded_compat(draw, (55, 242, 1025, 380), radius=28, fill="#FFFFFF")
+        hook_font = load_font(43)
+        draw_centered_wrapped(draw, compact_scene_caption(hook, max_words=15, max_chars=88), hook_font, (70, 250, 1010, 372), "#111111", 2)
+
+    # Story caption panel. The words are deliberately short; no generic footer slogans.
+    draw.rectangle((0, 1305, width, height), fill=accent)
+    draw.rectangle((0, 1305, width, 1325), fill="#111111")
+    caption_font = load_font(76)
+    draw_wrapped(draw, caption, caption_font, 58, 1410, 960, "#111111", 3)
+
+    # Optional second stock frame adds a clear visual change without covering the hook.
+    if secondary_asset is not None:
+        inset = cover_image(secondary_asset, (285, 255))
+        canvas.paste(inset, (735, 1020))
+        frame = ImageDraw.Draw(canvas)
+        draw_rounded_compat(frame, (728, 1013, 1027, 1282), radius=24, outline="#FFFFFF", width=10)
+
+    canvas.save(output, quality=94)
 
 def render_one_scene(canvas: Path, duration: float, output: Path) -> None:
     frames = max(25, int(round(duration * 25)))
@@ -658,24 +767,62 @@ def render_short_job(job_id: str) -> None:
                     user_images.append(path)
                 except Exception:
                     pass
-        for idx, group in enumerate(groups):
-            query = extract_keywords(group["text"])
-            candidates = search_public_assets(query, limit=30)
-            chosen: list[tuple[Path, dict[str, str]]] = []
+
+        # Search with the topic/hook as well as the narration; Turkish words receive
+        # a lightweight English visual-query variant for the stock-image catalogues.
+        stock_pool: list[tuple[Path, dict[str, str]]] = []
+        target_pool_size = min(10, max(4, len(groups)))
+        for query in visual_search_queries(title, hook, script):
+            candidates = search_public_assets(query, limit=45)
             for candidate in candidates:
                 asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
-                if asset_path:
-                    chosen.append((asset_path, candidate))
+                if not asset_path:
+                    continue
+                stock_pool.append((asset_path, candidate))
+                source_records.append(candidate)
+                if len(stock_pool) >= target_pool_size:
+                    break
+            if len(stock_pool) >= min(4, target_pool_size):
+                break
+
+        # If the topic query returned too few images, search scene phrases to fill
+        # the visual pool. Reuse only as a last resort; adjacent scenes get different images.
+        if len(stock_pool) < min(3, len(groups)):
+            for group in groups:
+                query = english_visual_query(title + " " + group["text"]) or extract_keywords(group["text"])
+                if not query:
+                    continue
+                for candidate in search_public_assets(query, limit=18):
+                    asset_path = download_commons_asset(candidate, work_dir, len(source_records) + 1)
+                    if not asset_path:
+                        continue
+                    if any(existing[1].get("url") == candidate.get("url") for existing in stock_pool):
+                        continue
+                    stock_pool.append((asset_path, candidate))
                     source_records.append(candidate)
                     break
-            if not chosen and user_images:
+                if len(stock_pool) >= target_pool_size:
+                    break
+
+        # Every scene receives a visible stock image when at least one licensed result
+        # is available. Uploaded reference images are kept as optional secondary frames.
+        for idx, group in enumerate(groups):
+            chosen: list[tuple[Path, dict[str, str]]] = []
+            if stock_pool:
+                chosen.append(stock_pool[idx % len(stock_pool)])
+            if user_images:
                 own_path = user_images[idx % len(user_images)]
-                chosen.append((own_path, {"title": own_path.name, "author": "User supplied", "license": "User supplied; verify your own rights", "license_url": "", "page_url": "", "source": "User upload"}))
-                source_records.append(chosen[0][1])
+                chosen.append((own_path, {
+                    "title": own_path.name, "author": "User supplied",
+                    "license": "User supplied; verify your own rights",
+                    "license_url": "", "page_url": "", "source": "User upload",
+                }))
             scene_assets.append(chosen)
             progress = 38 + int(28 * (idx + 1) / max(1, len(groups)))
-            update_job(job_id, progress=progress, message="Görseller ve lisanslar seçiliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
-        update_job(job_id, progress=70, message="Canlı renkli kolaj, infografik ve sahne animasyonları oluşturuluyor…")
+            update_job(job_id, progress=progress, message="Lisanslı stok görseller eşleştiriliyor… (" + str(idx + 1) + "/" + str(len(groups)) + ")")
+        if not stock_pool and not user_images:
+            update_job(job_id, progress=66, message="Uygun stok görsel bulunamadı; sahneler dinamik grafiklerle hazırlanıyor.")
+
         clips = []
         total_duration = sum(max(0.7, float(g["end"]) - float(g["start"])) for g in groups)
         cursor = 0.0
