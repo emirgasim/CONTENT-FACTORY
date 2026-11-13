@@ -1,7 +1,7 @@
 const json=(data,status=200)=>Response.json(data,{status,headers:{"Cache-Control":"public, max-age=300","Access-Control-Allow-Origin":"*"}});
 const headers={"Accept":"application/json","User-Agent":"ContentFactoryShorts/1.0 (open-media-search)"};
 const clean=s=>String(s||"").replace(/<[^>]*>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
-function permitted(label){const s=String(label||"").toLowerCase();return /^(cc0|pdm|by|by-sa|cc-by|cc-by-sa)$/.test(s)||/public domain|creative commons attribution(?:-sharealike)?|cc0/.test(s);}
+function permitted(label){const s=String(label||"").toLowerCase();if(/non.?commercial|\\bnc\\b|\\bnd\\b|no.?derivatives/.test(s))return false;return /cc0|cc\\s*0|public domain|\\bpdm\\b|(^|[^a-z])(?:cc[- ]?)?by(?:[- ]?sa)?(?:[^a-z]|$)|creative commons attribution(?:-sharealike)?/.test(s);}
 function normalize(item){const url=String(item.url||"");if(!url)return null;return {...item,url,proxyUrl:"/api/visual-image?url="+encodeURIComponent(url)};}
 async function openverse(q){
  const u=new URL("https://api.openverse.org/v1/images/");
