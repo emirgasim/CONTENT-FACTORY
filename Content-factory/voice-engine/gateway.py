@@ -985,7 +985,7 @@ def rank_scene_images(query: str, candidates: list[tuple[Path, dict[str, str]]])
             "An unrelated stock photograph that does not depict the described scene.",
         ]
         prompts = positive_prompts + negative_prompts
-        inputs = _CLIP_PROCESSOR(text=prompts, images=images, return_tensors="pt", padding=True)
+        inputs = _CLIP_PROCESSOR(text=prompts, images=images, return_tensors="pt", padding=True, truncation=True, max_length=77)
         with torch.inference_mode():
             outputs = _CLIP_MODEL(**inputs)
             image_features = outputs.image_embeds
@@ -1296,7 +1296,7 @@ def render_short_job(job_id: str) -> None:
 
         # Every scene must obtain and pass its own visual match. A video-wide
         # topic cache is intentionally not used as a fallback for unrelated beats.
-        seen_asset_urls: set[str] = set()
+        downloaded_asset_cache: dict[str, tuple[Path, dict[str, str]]] = {}
         query_cache: dict[str, list[dict[str, str]]] = {}
 
         for idx, group in enumerate(groups):
@@ -1324,6 +1324,7 @@ def render_short_job(job_id: str) -> None:
                     query_variants.append(query[:180])
 
             scene_pairs: list[tuple[Path, dict[str, str]]] = []
+            scene_seen_urls: set[str] = set()
             for query_attempt, scene_query in enumerate(query_variants[:4]):
                 cache_key = re.sub(r"\s+", " ", scene_query.lower()).strip()
                 candidates = query_cache.get(cache_key)
@@ -1338,13 +1339,20 @@ def render_short_job(job_id: str) -> None:
 
                 for candidate in candidates[:16]:
                     url = str(candidate.get("url") or "").strip()
-                    if not url or url in seen_asset_urls:
+                    if not url or url in scene_seen_urls:
+                        continue
+                    scene_seen_urls.add(url)
+                    cached_pair = downloaded_asset_cache.get(url)
+                    if cached_pair is not None:
+                        if cached_pair[0] not in used_scene_paths:
+                            scene_pairs.append(cached_pair)
                         continue
                     asset_path = download_image_asset(candidate, work_dir, len(source_records) + len(scene_pairs) + 1)
                     if not asset_path:
                         continue
-                    seen_asset_urls.add(url)
-                    scene_pairs.append((asset_path, candidate))
+                    pair = (asset_path, candidate)
+                    downloaded_asset_cache[url] = pair
+                    scene_pairs.append(pair)
                     if len(scene_pairs) >= 18:
                         break
                 if len(scene_pairs) >= 18:
