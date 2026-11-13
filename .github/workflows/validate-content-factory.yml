@@ -37,6 +37,17 @@ jobs:
           Path('/tmp/slideshow.js').write_text(scripts[-1])
           PY
           node --check /tmp/slideshow.js
+      - name: Check autonomous editor agent script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          page = Path('Content-factory/public/editor.html').read_text()
+          scripts = re.findall(r'<script>(.*?)</script>', page, re.S)
+          assert scripts, 'editor script not found'
+          Path('/tmp/editor.js').write_text(scripts[-1])
+          PY
+          node --check /tmp/editor.js
       - name: Check Cloudflare Pages Function syntax
         run: |
           node --input-type=module --check < Content-factory/functions/api/visual-search.js
