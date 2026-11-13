@@ -6,7 +6,7 @@
 <body><div class="shell">
 <header class="topbar"><div class="brand"><span class="brand-mark">✳</span><div><b>CONTENT FACTORY</b><small>CREATIVE VIDEO WORKSPACE</small></div></div><div class="top-actions"><span class="status"><i></i> ONE SHORT STUDIO</span><button id="settingsToggle" class="btn btn-ghost">Bulut sistemi</button></div></header>
 <main>
-<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Metin, kanca ve sesini gönder. Shorts arka planda bulutta üretilsin; iPhone'unu kapatabilirsin.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
+<section class="hero"><div><div class="eyebrow">GPT CONTENT → VOICE → VISUALS</div><h1>Bir konu.<br><em>Bir ses.</em><br>Hazır Shorts.</h1><p>Yalnızca kancanı ve ses dosyanı gönder. Ses otomatik çözümlenir; Shorts bulutta hazırlanır.</p></div><div class="hero-sticker"><span>MAKE IT</span><strong>MOVE!</strong><small>ONE TOPIC AT A TIME</small></div></section>
 
 <section id="engineSettings" class="panel settings-panel hidden"><div class="eyebrow">CLOUD RENDER</div><h3>Bulut Shorts işçisi</h3><p class="muted">Ses, metin ve görseller iPhone dışındaki geçici render işçisine gönderilir. MP4 hazır olduğunda indir; ardından projeyi sil. Onaylanmayan projeler 24 saat içinde otomatik temizlenir.</p><div class="media-info">iPhone yalnızca kontrol panelidir. Render işlemi tarayıcı kapansa da sürer.</div><input id="engineUrl" type="hidden"><input id="engineToken" type="hidden"></section>
 
@@ -34,12 +34,11 @@
 <div class="section-head"><div><div class="eyebrow">CLOUD RENDER · TEMPORARY PROJECTS</div><h2>Shorts üretim masası</h2></div><button id="closeEditor" class="btn btn-ghost">Kapat</button></div>
 
 <div class="panel">
-<div class="step-label"><span>01</span><div><div class="eyebrow">SCRIPT</div><h3>Seslendirme metnini yapıştır</h3></div></div>
-<label class="field-label" for="topicTitle">Konu başlığı <small>(isteğe bağlı)</small></label><input id="topicTitle" maxlength="120" placeholder="Örn. Pac-Man'ın 256. seviyesinde ne oluyor?"><label class="field-label" for="hookText">Kanca yazısı <small>(zorunlu · videonun üst kısmında görünür)</small></label><input id="hookText" maxlength="100" required placeholder="Örn. Bu gizli ayrıntı yıllarca fark edilmedi…">
-<label class="field-label" for="scriptText">Seslendirme metni</label><textarea id="scriptText" rows="8" maxlength="5000" placeholder="ChatGPT'de hazırladığımız 40–45 saniyelik metni buraya yapıştır..."></textarea>
-<div class="action-row"><span id="scriptCount" class="muted">0 karakter · sesle eşleştirilecek</span><button id="clearScript" class="btn btn-ghost">Temizle</button></div><label class="field-label" for="visualFiles">İsteğe bağlı referans görsellerin (en fazla 8)</label><input id="visualFiles" type="file" accept="image/*" multiple><div id="visualStatus" class="media-info">Sistem her sahne için internette açık lisanslı görsel arar. Kendi görsellerini de referans olarak ekleyebilirsin.</div>
+<div class="step-label"><span>01</span><div><div class="eyebrow">HOOK</div><h3>Videonun kanca cümlesi</h3></div></div>
+<label class="field-label" for="hookText">Kanca yazısı <small>(zorunlu · videonun üst kısmında görünür)</small></label><input id="hookText" maxlength="100" required placeholder="Örn. Bu gizli ayrıntı yıllarca fark edilmedi…">
+<div class="media-info">Metin yapıştırmana gerek yok. Sistem ses dosyanı otomatik yazıya döker ve sahneleri sesin zaman kodlarına göre oluşturur. Görseller ayrı aşamada onayına sunulacak.</div>
+<div hidden><input id="topicTitle"><textarea id="scriptText"></textarea><input id="visualFiles" type="file" multiple></div>
 </div>
-
 <div class="panel">
 <div class="step-label"><span>02</span><div><div class="eyebrow">AUDIO INPUT</div><h3>Ses kaynağını seç</h3></div></div>
 <p class="muted">Sesini burada kaydedebilir veya daha önce hazırladığın ses dosyasını yükleyebilirsin. İkisinden yalnızca birini seçmen yeterli.</p>
@@ -63,4 +62,4 @@
 </section>
 
 <footer><span>CONTENT FACTORY / ONE TOPIC AT A TIME</span></footer>
-</div><script src="/app.js?v=r2-free-kv-v1"></script></body></html>
+</div><script src="/app.js?v=audio-hook-v1"></script></body></html>
