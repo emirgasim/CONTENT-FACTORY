@@ -226,9 +226,9 @@ async def job_credits(job_id: str, _auth: None = __import__("fastapi").Depends(r
 def trim_silence(source: Path, output: Path) -> float:
     """Remove leading silence and shorten long pauses before transcription and scene timing."""
     filt = (
-        "silenceremove=start_periods=1:start_duration=0.12:start_threshold=-42dB:"
-        "start_silence=0.04:stop_periods=-1:stop_duration=0.28:"
-        "stop_threshold=-42dB:stop_silence=0.10:detection=rms:window=0.02"
+        "silenceremove=start_periods=1:start_duration=0.12:start_threshold=-40dB:"
+        "start_silence=0.04:stop_periods=-1:stop_duration=0.18:"
+        "stop_threshold=-40dB:stop_silence=0.08:detection=rms:window=0.02"
     )
     result = run_command([
         "ffmpeg", "-y", "-i", str(source), "-vn", "-af", filt,
@@ -300,51 +300,79 @@ def fallback_segments(text: str, duration: float) -> list[dict[str, Any]]:
 
 
 def make_scene_groups(rows: list[dict[str, Any]], duration: float, target_seconds: float | None = None) -> list[dict[str, Any]]:
-    """Keep Whisper's real word timings; merge only very short adjacent beats."""
+    """Build caption beats from Whisper timestamps without redistributing speech over the whole file."""
+    minimum_beat = 1.35
     groups: list[dict[str, Any]] = []
+
     for row in rows:
-        text = re.sub(r"\\s+", " ", str(row.get("text", "")).strip())
+        text = re.sub(r"\s+", " ", str(row.get("text", "")).strip())
         start = max(0.0, min(duration, float(row.get("start", 0.0))))
         end = max(start + 0.08, min(duration, float(row.get("end", start + 0.5))))
-        if not text or end <= start:
+        if not text:
             continue
-        words = text.split()
-        # Keep phrases readable, but do not split a short sentence into single-word flashes.
-        chunks = [" ".join(words[i:i + 9]) for i in range(0, len(words), 9)]
-        weights = [max(1, len(x.split())) for x in chunks]
-        total = sum(weights)
+
+        clauses = [part.strip() for part in re.split(r"(?<=[.!?;,:])\s+", text) if part.strip()] or [text]
+        chunks: list[str] = []
+        for clause in clauses:
+            words = clause.split()
+            for offset in range(0, len(words), 7):
+                chunk = " ".join(words[offset:offset + 7]).strip()
+                if chunk:
+                    chunks.append(chunk)
+        if not chunks:
+            continue
+
+        weights = [max(1, len(part.split())) for part in chunks]
+        total_weight = sum(weights)
+        row_span = max(0.08, end - start)
         cursor = start
-        for i, (chunk, weight) in enumerate(zip(chunks, weights)):
-            part_end = end if i == len(chunks) - 1 else cursor + (end - start) * weight / total
-            groups.append({"start": cursor, "end": part_end, "text": chunk})
+        for index, (part, weight) in enumerate(zip(chunks, weights)):
+            part_end = end if index == len(chunks) - 1 else cursor + row_span * weight / total_weight
+            groups.append({"start": cursor, "end": max(cursor + 0.08, part_end), "text": part})
             cursor = part_end
+
     if not groups:
         return fallback_segments("", duration)
 
-    # Merge short caption flashes with the closest neighbour without moving audio timestamps.
-    minimum = 1.55
+    groups.sort(key=lambda item: float(item["start"]))
+    # Merge very short beats into the closest neighbour; never stretch captions
+    # proportionally across the whole narration, because that destroys word sync.
     while len(groups) > 1:
-        spans = [float(g["end"]) - float(g["start"]) for g in groups]
-        short = [i for i, span in enumerate(spans) if span < minimum]
-        if not short:
+        spans = [max(0.0, float(item["end"]) - float(item["start"])) for item in groups]
+        short_indices = [i for i, span in enumerate(spans) if span < minimum_beat]
+        max_groups = max(1, int(duration / minimum_beat))
+        if not short_indices and len(groups) <= max_groups:
             break
-        i = min(short, key=lambda n: spans[n])
-        if i == 0:
-            j = 1
-        elif i == len(groups) - 1:
-            j = i - 1
+        index = min(short_indices or range(len(groups)), key=lambda i: spans[i])
+        if index == 0:
+            neighbour = 1
+        elif index == len(groups) - 1:
+            neighbour = index - 1
         else:
-            j = i - 1 if spans[i - 1] <= spans[i + 1] else i + 1
-        left, right = sorted((i, j))
-        groups[left]["text"] = (groups[left]["text"].rstrip() + " " + groups[right]["text"].lstrip()).strip()
-        groups[left]["end"] = groups[right]["end"]
+            left_gap = max(0.0, float(groups[index]["start"]) - float(groups[index - 1]["end"]))
+            right_gap = max(0.0, float(groups[index + 1]["start"]) - float(groups[index]["end"]))
+            neighbour = index - 1 if left_gap <= right_gap else index + 1
+        left, right = sorted((index, neighbour))
+        groups[left]["text"] = (str(groups[left]["text"]).strip() + " " + str(groups[right]["text"]).strip()).strip()
+        groups[left]["end"] = max(float(groups[left]["end"]), float(groups[right]["end"]))
         groups.pop(right)
-    # Preserve original timing; only clamp tiny ASR overlap/drift.
-    for i, group in enumerate(groups):
+
+    # Give short residual pauses to the preceding caption so the visual timeline
+    # covers the full cleaned audio while each caption still follows ASR timing.
+    groups[0]["start"] = 0.0
+    for index in range(1, len(groups)):
+        previous = groups[index - 1]
+        current = groups[index]
+        previous_end = float(previous["end"])
+        current_start = float(current["start"])
+        boundary = current_start if current_start <= previous_end else (previous_end + current_start) / 2.0
+        previous["end"] = max(float(previous["start"]) + 0.08, boundary)
+        current["start"] = previous["end"]
+    groups[-1]["end"] = duration
+    for group in groups:
         group["start"] = max(0.0, min(duration, float(group["start"])))
         group["end"] = max(group["start"] + 0.08, min(duration, float(group["end"])))
     return groups
-
 
 def plain_text(value: Any) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
@@ -652,35 +680,42 @@ def search_public_assets(query: str, limit: int = 30) -> list[dict[str, str]]:
         search_pexels, search_pixabay, search_unsplash, search_flickr,
         search_openverse, search_commons, search_library_of_congress,
         search_nasa, search_europeana, search_duckduckgo_images,
-        lambda q, limit: search_web_image_engine("Google Images", q, limit),
-        lambda q, limit: search_web_image_engine("Bing Images", q, limit),
-        lambda q, limit: search_web_image_engine("Yandex Images", q, limit),
     ]
     results: list[dict[str, str]] = []
     seen: set[str] = set()
-    per_provider = max(6, min(18, limit))
-    # Query independent providers concurrently to reduce render wait time.
-    with ThreadPoolExecutor(max_workers=min(12, len(providers))) as pool:
+    per_provider = max(8, min(24, limit))
+    # Keep providers that return item-level titles/source pages. Generic scraped
+    # image thumbnails without reliable metadata created unrelated scenes.
+    with ThreadPoolExecutor(max_workers=min(10, len(providers))) as pool:
         futures = [pool.submit(provider, query, per_provider) for provider in providers]
-        for future in as_completed(futures, timeout=45):
-            try:
-                items = future.result()
-            except Exception:
-                continue
-            for item in items:
-                url = str(item.get("url") or "").strip()
-                if not url or url in seen:
+        try:
+            for future in as_completed(futures, timeout=45):
+                try:
+                    items = future.result()
+                except Exception:
                     continue
-                seen.add(url)
-                results.append(item)
-                if len(results) >= limit:
-                    return results
-    return results
+                for item in items:
+                    url = str(item.get("url") or "").strip()
+                    if not url or url in seen:
+                        continue
+                    seen.add(url)
+                    results.append(item)
+        except TimeoutError:
+            pass
+    ranked = sorted(
+        results,
+        key=lambda item: visual_relevance_score(query, item),
+        reverse=True,
+    )
+    # Reject results whose metadata does not support the requested scene.
+    relevant = [item for item in ranked if visual_relevance_score(query, item) >= 2]
+    return relevant[:limit]
 
 
 VISUAL_ENGLISH_WORDS = {
     "köpek": "dog", "köpeği": "dog", "köpeğin": "dog", "köpekler": "dogs",
     "köpeklerin": "dogs", "kedi": "cat", "kedisi": "cat", "kediler": "cats",
+    "rocky": "Rocky", "balboa": "Balboa", "butkus": "Butkus",
     "stallone": "Sylvester Stallone", "senaryo": "screenplay", "senaryoyu": "screenplay",
     "oyuncu": "actor", "oyuncunun": "actor", "film": "film", "filmi": "film",
     "dolar": "money", "para": "money", "teklif": "offer", "tarih": "history",
@@ -693,14 +728,34 @@ VISUAL_ENGLISH_WORDS = {
     "spor": "sports", "futbol": "football", "müzik": "music", "sanat": "art",
     "mısır": "Egypt", "roma": "Rome", "paris": "Paris", "istanbul": "Istanbul"
 }
-VISUAL_QUERY_STOP = STOP_WORDS | {"nin", "nın", "nun", "nün", "ın", "in", "un", "ün", "a", "e", "ya", "ye", "dan", "den", "dır", "dir", "dır", "dur", "dır"}
+VISUAL_QUERY_STOP = STOP_WORDS | {
+    "nin", "nın", "nun", "nün", "ın", "in", "un", "ün", "a", "e", "ya", "ye", "dan", "den", "dır", "dir", "dur",
+    "bugün", "akla", "gelir", "denildiğinde", "efsanevi", "karakter", "aslında", "daha", "önce", "sonra",
+    "etti", "etmiş", "oldu", "olmuş", "olarak", "yapımcılar", "hikayeyi", "hikâyesi", "birçok", "binlerce",
+}
+VISUAL_ENGLISH_STOP = {"the", "and", "for", "with", "from", "that", "this", "before", "after", "about", "when", "what", "were", "was", "his", "her", "their"}
+
+
+def visual_relevance_score(query: str, item: dict[str, str]) -> int:
+    query_tokens = {
+        token for token in re.findall(r"[a-z0-9]+", (query or "").lower())
+        if len(token) >= 3 and token not in VISUAL_ENGLISH_STOP
+    }
+    candidate_text = " ".join([
+        str(item.get("title") or ""),
+        str(item.get("page_url") or ""),
+        str(item.get("author") or ""),
+    ]).lower()
+    candidate_tokens = set(re.findall(r"[a-z0-9]+", candidate_text))
+    overlap = query_tokens & candidate_tokens
+    strong_overlap = {token for token in overlap if len(token) >= 6}
+    return len(overlap) * 2 + len(strong_overlap) * 2
 
 
 def english_visual_query(text: str) -> str:
-    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9']+", (text or "").lower())
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", (text or "").lower())
     output: list[str] = []
     for token in tokens:
-        token = token.strip("'")
         if len(token) < 3 or token in VISUAL_QUERY_STOP:
             continue
         translated = VISUAL_ENGLISH_WORDS.get(token, token)
@@ -792,6 +847,13 @@ def download_image_asset(item: dict[str, str], directory: Path, index: int) -> P
         path.write_bytes(content)
         with Image.open(path) as image:
             image.verify()
+        with Image.open(path) as image:
+            if image.width < 480 or image.height < 360:
+                path.unlink(missing_ok=True)
+                return None
+            if image.format not in {"JPEG", "PNG", "WEBP"}:
+                path.unlink(missing_ok=True)
+                return None
         return path
     except Exception:
         return None
@@ -852,73 +914,78 @@ def draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont
 
 
 def create_visual_canvas(group: dict[str, Any], assets: list[tuple[Path, dict[str, str]]], index: int, output: Path, title: str, hook: str = "") -> None:
-    """Full-bleed 9:16 visual with centered, readable captions; no decorative bands."""
     width, height = 1080, 1920
-    caption = compact_scene_caption((group.get("text") or title or "Öne çıkan detay").strip(), max_words=10, max_chars=88)
-    if not assets:
-        raise RuntimeError("Sahne için doğrulanmış görsel bulunamadı.")
-    try:
-        with Image.open(assets[0][0]) as source:
-            canvas = cover_image(source, (width, height))
-    except Exception as exc:
-        raise RuntimeError("Sahne görseli açılamadı: " + str(exc))
-    # Restrained cinematic grade and a soft full-frame dark veil for legible typography.
-    canvas = Image.blend(canvas, Image.new("RGB", (width, height), "#10131A"), 0.10)
-    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    od = ImageDraw.Draw(overlay)
-    for y in range(height):
-        alpha = int(115 * max(0.0, (y / height - 0.45) / 0.55))
-        if alpha:
-            od.line((0, y, width, y), fill=(0, 0, 0, alpha))
-    canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay)
+    background = "#10151E"
+    panel = "#1A2230"
+    accent = "#E8B968"
+    primary_asset = None
+    if assets:
+        try:
+            primary_asset = Image.open(assets[0][0]).convert("RGB")
+        except Exception:
+            primary_asset = None
+    if primary_asset is None:
+        raise RuntimeError("Bu sahne için doğrulanmış görsel bulunamadı.")
+
+    canvas = Image.new("RGB", (width, height), background)
     draw = ImageDraw.Draw(canvas)
 
-    # Small persistent hook at the top; no oversized pill or waveform decoration.
-    if hook:
-        hook_font = load_font(42)
-        hook_lines = wrap_lines(draw, re.sub(r"\\s+", " ", hook.strip()), hook_font, 900)[:2]
-        y = 110
+    # Quiet editorial header; the hook is shown only on the opening scene.
+    eyebrow_font = load_font(30)
+    hook_font = load_font(48)
+    title_text = re.sub(r"\s+", " ", str(title or "SHORTS")).strip()[:72]
+    draw.text((72, 66), title_text, font=eyebrow_font, fill="#B9C4D3")
+    draw.rectangle((72, 122, 1008, 128), fill=accent)
+
+    if index == 0 and hook:
+        hook_lines = wrap_lines(draw, re.sub(r"\s+", " ", str(hook).strip()), hook_font, 920)[:2]
+        y = 150
         for line in hook_lines:
-            bbox = draw.textbbox((0, 0), line, font=hook_font, stroke_width=1)
-            x = (width - (bbox[2] - bbox[0])) // 2
-            draw.text((x, y), line, font=hook_font, fill="#FFFFFF", stroke_width=2, stroke_fill="#111111")
-            y += 54
+            draw.text((72, y), line, font=hook_font, fill="#F6F7FA")
+            y += 58
 
-    # Center-lower caption: compact translucent backing, white type, subtle shadow.
-    font = load_font(68)
-    lines = wrap_lines(draw, caption, font, 900)[:3]
-    line_h = 84
-    text_h = len(lines) * line_h
-    top = 1010 - text_h // 2
-    widths = [draw.textbbox((0, 0), line, font=font, stroke_width=1)[2] for line in lines]
-    panel_w = min(980, max(widths, default=0) + 74)
-    panel_h = text_h + 54
-    left = (width - panel_w) // 2
-    draw_rounded_compat(draw, (left, top - 27, left + panel_w, top + panel_h - 27), radius=28, fill=(0, 0, 0, 150))
+    # A contained, balanced image card replaces the full-bleed image and flashing bands.
+    image_box = (72, 270, 1008, 1070)
+    image = cover_image(primary_asset, (image_box[2] - image_box[0], image_box[3] - image_box[1]))
+    canvas.paste(image, (image_box[0], image_box[1]))
+    draw = ImageDraw.Draw(canvas)
+    draw_rounded_compat(draw, image_box, radius=28, outline="#344052", width=3)
+
+    # Caption stays in a calm dark panel with generous but purposeful spacing.
+    panel_box = (72, 1110, 1008, 1810)
+    draw_rounded_compat(draw, panel_box, radius=30, fill=panel, outline="#293648", width=2)
+    draw.rounded_rectangle((112, 1190, 122, 1725), radius=5, fill=accent)
+
+    caption = compact_scene_caption(
+        (group.get("text") or title or "Öne çıkan detay").strip(),
+        max_words=15,
+        max_chars=120,
+    )
+    words = caption.split()
+    caption_size = 60 if len(words) <= 10 else 54
+    caption_font = load_font(caption_size)
+    lines = wrap_lines(draw, caption, caption_font, 805)[:4]
+    line_height = int(caption_font.size * 1.24)
+    total_height = len(lines) * line_height
+    y = panel_box[1] + max(55, (panel_box[3] - panel_box[1] - total_height) // 2)
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=1)
-        x = (width - (bbox[2] - bbox[0])) // 2
-        draw.text((x + 2, top + 2), line, font=font, fill="#000000", stroke_width=2, stroke_fill="#000000")
-        draw.text((x, top), line, font=font, fill="#FFFFFF", stroke_width=1, stroke_fill="#111111")
-        top += line_h
-    canvas.convert("RGB").save(output, quality=94)
+        draw.text((160, y), line, font=caption_font, fill="#F3F5F8")
+        y += line_height
 
+    canvas.save(output, quality=95)
 
 def render_one_scene(canvas: Path, duration: float, output: Path, audio_path: Path | None = None, audio_start: float = 0.0) -> None:
-    # Alternating slow push/pull creates restrained movement without distracting effects.
-    direction = "min(zoom+0.0009,1.12)" if int(audio_start * 10) % 2 == 0 else "if(eq(on,1),1.12,max(zoom-0.0009,1.0))"
-    zoom = "zoompan=z='" + direction + "':x='iw/2-(iw/zoom/2)+8*sin(on/38)':y='ih/2-(ih/zoom/2)+10*cos(on/44)':d=1:s=1080x1920:fps=30"
-    args = ["ffmpeg", "-y", "-loop", "1", "-i", str(canvas)]
-    if audio_path and audio_path.is_file():
-        args += ["-ss", str(max(0.0, audio_start)), "-t", str(max(0.6, duration)), "-i", str(audio_path)]
-    else:
-        args += ["-t", str(max(0.6, duration))]
-    args += ["-vf", zoom + ",format=yuv420p", "-t", str(max(0.6, duration)), "-r", "30",
-             "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)]
+    # Subtle camera movement only. No rainbow hue cycling or decorative waveforms.
+    zoom = "zoompan=z='min(zoom+0.00022,1.025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=25"
+    args = [
+        "ffmpeg", "-y", "-loop", "1", "-i", str(canvas),
+        "-t", str(max(0.6, duration)),
+        "-vf", zoom + ",scale=1080:1920:flags=lanczos,setsar=1,format=yuv420p",
+        "-r", "25", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", str(output)
+    ]
     result = run_command(args, timeout=300)
     if result.returncode != 0 or not output.exists():
         raise RuntimeError("Sahne render edilemedi: " + result.stderr[-900:])
-
 
 def render_short_job(job_id: str) -> None:
     # Updated 9:16 layout, stock-image matching, short scene captions and pause trimming.
@@ -1061,7 +1128,8 @@ def render_short_job(job_id: str) -> None:
         final_result = run_command([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
             "-i", str(cleaned_audio), "-map", "0:v:0", "-map", "1:a:0",
-            "-t", str(duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+            "-t", str(duration), "-vf", "scale=1080:1920:flags=lanczos,setsar=1",
+            "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-movflags", "+faststart", str(output_video)
         ], timeout=900)
