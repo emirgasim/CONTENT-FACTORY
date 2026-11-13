@@ -38,7 +38,8 @@ jobs:
           node --input-type=module --check < 'Content-factory/functions/api/internal/shorts/jobs/[jobId].js'
           node --input-type=module --check < 'Content-factory/functions/api/internal/shorts/jobs/[jobId]/[asset].js'
       - name: Check Python engine syntax
-        run: python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py
+        run: python -m py_compile Content-factory/voice-engine/gateway.py Content-factory/voice-engine/cloud_worker.py Content-factory/voice-engine/editing_agent.py Content-factory/voice-engine/test_editing_agent.py
+          python -m unittest discover -s Content-factory/voice-engine -p 'test_*.py' -v
       - name: Check required application files
         run: |
           test -s Content-factory/public/index.html
