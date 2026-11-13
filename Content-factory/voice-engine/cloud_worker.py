@@ -353,7 +353,20 @@ def prepare_review(job_id,meta,work,source=None):
     if len(pairs)>=40:break
    ranked=gateway.rank_scene_images(visual_target,pairs)
    options=save_verified_review_options(job_id,index,ranked)
-  if not options:raise RuntimeError("Sahne "+str(index+1)+" için görsel olarak doğrulanmış fotoğraf bulunamadı: "+scene_text[:140])
+  if not options and manifest["scenes"]:
+   # Reuse only a previously CLIP-verified project photo for connective beats.
+   previous=manifest["scenes"][-1]
+   previous_options=previous.get("options") or []
+   if previous_options:
+    prior=previous_options[0]
+    prior_scene=int(previous.get("index") or index)
+    prior_id=str(prior.get("id") or "1")
+    reused=work/("reused-verified-"+str(index+1)+".jpg")
+    get_input(job_id,"candidate-"+str(prior_scene)+"-"+prior_id,reused)
+    stored=upload_review_image(job_id,index+1,"1",reused)
+    options=[{"id":"1","asset":f"candidate-{index+1}-1","score":prior.get("score",0),"title":str(prior.get("title","Verified project photo"))+" (contextual reuse)","source":prior.get("source","Open web"),"author":prior.get("author","Unknown"),"license":prior.get("license","Check source terms"),"license_url":prior.get("license_url",""),"page_url":prior.get("page_url",""),"size":stored["size"],"parts":stored["parts"],"reused_verified":True}]
+    print("[visual-match] scene",index+1,"reuses prior verified project photo for connective narration beat",flush=True)
+  if not options:raise RuntimeError("Sahne "+str(index+1)+" için güvenilir fotoğraf bulunamadı ve projede yeniden kullanılabilecek doğrulanmış görsel yok: "+scene_text[:140])
   manifest["scenes"].append({"index":index+1,"start":round(float(group.get("start",0)),2),"end":round(float(group.get("end",0)),2),"text":scene_text,"options":options})
   update_status(job_id,status="processing",progress=15+int(65*(index+1)/len(groups)),message="Görseller araştırılıyor ("+str(index+1)+"/"+str(len(groups))+")")
  request_json("PUT",f"{api_base()}/{job_id}",json={"type":"review","manifest":manifest})
