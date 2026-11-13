@@ -81,12 +81,12 @@ def prepare_review(job_id,meta,work,source):
    if len(pairs)>=12:break
   ranked=gateway.rank_scene_images(brief,pairs)
   options=[]
-  for score,(path,source_info) in enumerate([pair for _score,pair in ranked[:4]]):
+  for rank_index,(score,(path,source_info)) in enumerate(ranked[:4]):
    # CLIP ranker tags only verified visual matches.
    if source_info.get("visual_match_verified")!="true":continue
    candidate_id=str(len(options)+1)
    stored=upload_review_image(job_id,index+1,candidate_id,path)
-   options.append({"id":candidate_id,"asset":f"candidate-{index+1}-{candidate_id}","score":round(float(ranked[score][0]),4) if score<len(ranked) else 0,"title":source_info.get("title","Image"),"source":source_info.get("source","Open web"),"author":source_info.get("author","Unknown"),"license":source_info.get("license","Check source terms"),"license_url":source_info.get("license_url",""),"page_url":source_info.get("page_url",""),"size":stored["size"],"parts":stored["parts"]})
+   options.append({"id":candidate_id,"asset":f"candidate-{index+1}-{candidate_id}","score":round(float(score),4),"title":source_info.get("title","Image"),"source":source_info.get("source","Open web"),"author":source_info.get("author","Unknown"),"license":source_info.get("license","Check source terms"),"license_url":source_info.get("license_url",""),"page_url":source_info.get("page_url",""),"size":stored["size"],"parts":stored["parts"]})
   if not options:raise RuntimeError("Sahne "+str(index+1)+" için görsel olarak doğrulanmış seçenek bulunamadı: "+scene_text[:140])
   manifest["scenes"].append({"index":index+1,"start":round(float(group.get("start",0)),2),"end":round(float(group.get("end",0)),2),"text":scene_text,"options":options})
   update_status(job_id,status="processing",progress=15+int(65*(index+1)/len(groups)),message="Görseller araştırılıyor ("+str(index+1)+"/"+str(len(groups))+")")
