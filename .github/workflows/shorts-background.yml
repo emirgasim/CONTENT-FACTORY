@@ -73,3 +73,19 @@ jobs:
           FLICKR_API_KEY: ${{ secrets.FLICKR_API_KEY }}
           EUROPEANA_API_KEY: ${{ secrets.EUROPEANA_API_KEY }}
         run: python Content-factory/voice-engine/cloud_worker.py --job-id "$JOB_ID" --phase "$PHASE"
+      - name: Publish failure status if a worker step stops unexpectedly
+        if: failure()
+        env:
+          CONTENT_FACTORY_URL: https://content-factory-7s6.pages.dev
+          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          set +e
+          API="$CONTENT_FACTORY_URL/api/internal/shorts/jobs/$JOB_ID"
+          CURRENT="$(curl --silent --show-error "$API" -H "X-Factory-Worker-Secret: $CF_WORKER_SECRET" 2>/dev/null)"
+          if ! printf '%s' "$CURRENT" | grep -q '"status":"failed"'; then
+            curl --silent --show-error -X PUT "$API" \
+              -H "X-Factory-Worker-Secret: $CF_WORKER_SECRET" \
+              -H "Content-Type: application/json" \
+              --data '{"status":"failed","progress":100,"message":"Bulut işçisi beklenmedik şekilde durdu. GitHub Actions günlüklerini kontrol edin."}' || true
+          fi
