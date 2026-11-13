@@ -69,3 +69,14 @@ The Python render engine searches Wikimedia Commons, Openverse and Library of Co
 - If no verified candidate exists for a scene, research fails closed and asks for a retry; it does not silently substitute an unrelated graphic or generated image.
 
 <!-- Preview deployment refresh after Pages secret update. -->
+
+
+## Independent animated-scene mode
+
+- The Shorts editor offers two separate visual modes: stock (the existing real-photo search and user-approval flow) and animated (the independent no-stock workflow).
+- Animated mode dispatches directly to the cloud render phase. It does not call search_public_assets, download candidate photos, create a photo-review manifest, or require scene-photo approval.
+- For audio input, the cloud worker transcribes the narration, applies the same audio edit/timeline mapping, and derives each animated scene from the resulting time-aligned narration beats. The rendered animation follows the cleaned narration duration.
+- For text input, the worker creates sentence/clause-sized visual beats, creates a silent audio bed of the estimated reading duration, and renders one animated scene per beat.
+- The renderer is procedural Pillow pixel art plus FFmpeg: rotating bright poster backgrounds, thin geometric outlines, a consistent dark rounded retro window, topic-specific moving pixel motifs, and bold white captions with a thick dark outline. It does not fetch or embed stock photos or external artwork.
+- Current semantic motif families include retro arcade, Minecraft/block world, cartoon, film, space, science, history, money, animals, sport, computers/technology, city/travel, music, nature and mystery. Unclassified beats use the mystery visual as a safe fallback.
+- Output is MP4 at 1080×1920, 30 FPS, with the narration audio when provided. Text-only mode is intentionally silent. Temporary inputs and output continue to use the existing 24-hour KV expiry and explicit delete-after-download flow.
