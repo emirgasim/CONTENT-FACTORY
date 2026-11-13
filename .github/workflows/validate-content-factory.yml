@@ -26,6 +26,17 @@ jobs:
         run: node --check Content-factory/public/app.js
       - name: Check iPhone local renderer syntax
         run: node --check Content-factory/public/local-render.js
+      - name: Check standalone slideshow studio script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          page = Path('Content-factory/public/slideshow.html').read_text()
+          scripts = re.findall(r'<script>(.*?)</script>', page, re.S)
+          assert scripts, 'slideshow script not found'
+          Path('/tmp/slideshow.js').write_text(scripts[-1])
+          PY
+          node --check /tmp/slideshow.js
       - name: Check Cloudflare Pages Function syntax
         run: |
           node --input-type=module --check < Content-factory/functions/api/visual-search.js
