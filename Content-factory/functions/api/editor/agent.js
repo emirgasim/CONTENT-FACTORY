@@ -112,8 +112,9 @@ Bu aşamada yalnızca plan öneriyorsun. Hiçbir işlemi kendin uyguladığını
         { role: "system", content: system },
         { role: "user", content: JSON.stringify(user) }
       ],
-      max_tokens: 900,
-      temperature: 0.15
+      max_completion_tokens: 900,
+      temperature: 0.15,
+      chat_template_kwargs: { enable_thinking: false }
     });
     const parsed = parseModelJson(extractText(result));
     const actions = validateActions(parsed.actions, scenes);
